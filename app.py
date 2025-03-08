@@ -11,12 +11,12 @@ def get_ice_data():
     cursor = conn.cursor()
     
     query = """
-    SELECT lon, lat, v_ref
+    SELECT round(lon), round(lat), v_ref
     FROM vRefData
     JOIN iceGrid ON iceGrid.id = vRefData.cell_id 
     JOIN timeGrid ON timeGrid.id = vRefData.time_id 
     WHERE correctTime = '2019-01-08'
-    limit 13000;
+    limit 5000;
     """
     
     cursor.execute(query)
