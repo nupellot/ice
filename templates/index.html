@@ -1,98 +1,81 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Карта плотности льда</title>
-    <script src="https://api.mapbox.com/mapbox-gl-js/v2.13.0/mapbox-gl.js"></script>
-    <link href="https://api.mapbox.com/mapbox-gl-js/v2.13.0/mapbox-gl.css" rel="stylesheet">
-    <style>
-        body { margin: 0; padding: 0; }
-        #map { width: 100vw; height: 100vh; }
-    </style>
+  <meta charset="UTF-8" />
+  <title>3D Глобус с Тепловой Картой (deck.gl)</title>
+
+  <!-- 1) Подключаем единый бандл deck.gl (версия 8.8.19) -->
+  <script src="https://unpkg.com/deck.gl@8.8.19/dist.min.js"></script>
+
+  <!-- 2) Подключаем Mapbox GL JS -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.14.0/mapbox-gl.js"></script>
+  <link
+    href="https://api.mapbox.com/mapbox-gl-js/v2.14.0/mapbox-gl.css"
+    rel="stylesheet"
+  />
+
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    #map { width: 100%; height: 100%; }
+  </style>
 </head>
 <body>
-    <div id="map"></div>
-    <script>
-        mapboxgl.accessToken = 'pk.eyJ1Ijoia29jaHVyYWRhbmlsIiwiYSI6ImNsd3oxMnhsNDAyb20ybHNmemNpZGVvYzIifQ.QfmPfn0lmXAucuhEG_X4lQ';  // Вставь свой токен
 
-        const mapElement = document.getElementById('map');
-        if (!mapElement) {
-            console.error("Элемент #map не найден! HTML-код битый?");
-        } else {
-            console.log("Элемент #map найден!");
-        }
+<div id="map"></div>
 
+<script>
+  // Указываем токен Mapbox (замените на свой!)
+  mapboxgl.accessToken = 'pk.eyJ1Ijoia29jaHVyYWRhbmlsIiwiYSI6ImNsd3oxMnhsNDAyb20ybHNmemNpZGVvYzIifQ.QfmPfn0lmXAucuhEG_X4lQ';
 
-        const map = new mapboxgl.Map({
-            container: 'map',
-            style: 'mapbox://styles/mapbox/streets-v12',
-            center: [50, 70],  // Укажи центр карты
-            zoom: 3
-        });
+  // Создаём 3D-глобус на Mapbox
+  const map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/dark-v11',
+    center: [0, 90],
+    zoom: 1.5,
+    pitch: 45,
+    projection: 'globe'
+  });
 
-        map.on('error', (e) => {
-            console.error("Ошибка в Mapbox:", e);
-        });
+  // Добавляем атмосферу
+  map.on('style.load', () => {
+    map.setFog({});
+  });
 
+  // Загружаем JSON-данные о плотности льда
+  fetch('/heatmap')
+    .then(resp => resp.json())
+    .then(data => {
+      // Из глобального объекта deck берём нужные классы
+      const {MapboxLayer, HeatmapLayer} = deck;
 
-        fetch('/data')
-            .then(response => response.json())
-            .then(data => {
-                console.log("Полученные данные:", data); // Лог данных для отладки
+      // Создаём слой тепловой карты
+      const heatmapLayer = new MapboxLayer({
+        id: 'heatmap-layer',
+        type: HeatmapLayer,
+        data,
+        getPosition: d => [d.lon, d.lat],
+        getWeight: d => d.density,
+        radiusPixels: 50,
+        intensity: 2,
+        threshold: 0.05,
+        colorRange: [
+          [0, 0, 255, 0],    // Прозрачный синий
+          [0, 255, 255, 128],
+          [0, 255, 0, 180],
+          [255, 255, 0, 200],
+          [255, 165, 0, 220],
+          [255, 0, 0, 255]
+        ]
+      });
 
-                map.on('load', () => {
-                    console.log("Карта загружена! Это сообщение должно появиться.");
-                    if (data.features.length === 0) {
-                        console.error("GeoJSON пуст! Проверь запрос к базе.");
-                        return;
-                    }
+      // Добавляем слой при загрузке карты
+      map.on('load', () => {
+        map.addLayer(heatmapLayer);
+      });
+    })
+    .catch(err => console.error('Ошибка загрузки данных:', err));
+</script>
 
-                    console.log("Карта загружена, добавление источника...");
-                    map.addSource('ice-polygons', {
-                        type: 'geojson',
-                        data: data
-                    });
-                    console.log("Источник добавлен!");
-
-                    // Добавляем слой заливки
-                    map.addLayer({
-                        id: 'ice-layer',
-                        type: 'fill',
-                        source: 'ice-polygons',
-                        paint: {
-                            'fill-color': [
-                                'interpolate',
-                                ['linear'],
-                                ['get', 'v_ref'],
-                                0, '#0000ff',
-                                5, '#00ffff',
-                                10, '#00ff00',
-                                15, '#ffff00',
-                                20, '#ff0000',
-                                22, '#800000'
-                            ],
-                            'fill-opacity': 0.7
-                        }
-                    });
-
-                    // Добавляем границы полигонов
-                    map.addLayer({
-                        id: 'ice-borders',
-                        type: 'line',
-                        source: 'ice-polygons',
-                        paint: {
-                            'line-color': '#ffffff',
-                            'line-width': 1
-                        }
-                    });
-
-                    console.log("Полигоны успешно добавлены на карту!");
-                });
-            })
-            .catch(error => {
-                console.error("Ошибка загрузки данных:", error);
-            });
-    </script>
 </body>
 </html>
