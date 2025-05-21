@@ -277,10 +277,11 @@ function loadDataForDate(dateStr) {
                 'circle-radius': 4,
                 'circle-color': ['get', 'color'],
                 'circle-opacity': 0.5,
-                'circle-stroke-color': '#555',
-                'circle-stroke-width': 0.5,
+                'circle-stroke-color': 'red',      // красная окантовка
+                'circle-stroke-width': 2,          // толщина линии
                 'circle-blur': 0.5
             });
+
 
             if (!popupReal && !popupInterp) {
                 setupPopups();
