@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Ice Density Visualization with Stylish Centered Switch</title>
+    <title>Ice Density Visualization with Request Count Spinner</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
@@ -13,7 +13,7 @@
         body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
         #map { width: 100%; height: 100%; position: relative; }
 
-        /* Панель с выбором даты */
+        /* Панель с выбором даты и спиннером */
         #date-picker-container {
             position: absolute;
             top: 10px;
@@ -34,6 +34,7 @@
             cursor: pointer;
             width: 120px;
             text-align: center;
+            margin: 0 8px;
         }
         #prev-week, #next-week {
             font-size: 18px;
@@ -43,17 +44,52 @@
             color: white;
             user-select: none;
         }
-        #prev-week {
-            margin-right: 6px;
-        }
-        #next-week {
-            margin-left: 6px;
-        }
         #prev-week:hover, #next-week:hover {
             color: #ffd966;
         }
 
-        /* --- Новый современный тумблер --- */
+        /* Спиннер загрузки с числом */
+        #loading-spinner {
+            position: relative;
+            margin-left: 10px;
+            width: 18px;
+            height: 18px;
+        }
+
+        #loading-spinner .spinner-ring {
+            box-sizing: border-box;
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            top: 0;
+            left: 0;
+        }
+
+        #spinner-count {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 11px;
+            font-weight: bold;
+            color: white;
+            user-select: none;
+            pointer-events: none;
+            font-family: Arial, sans-serif;
+            line-height: 1;
+        }
+
+        /* Ключевые кадры для вращения */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+
+        /* Тумблер переключатель-рычажок */
         #stroke-toggle-container {
             position: absolute;
             top: 10px;
@@ -68,7 +104,6 @@
             display: flex;
             align-items: center;
         }
-        /* Стиль для switch-обертки */
         .switch {
             position: relative;
             display: inline-block;
@@ -76,13 +111,11 @@
             height: 28px;
             margin-right: 10px;
         }
-        /* Сам чекбокс скрыт */
         .switch input {
             opacity: 0;
             width: 0;
             height: 0;
         }
-        /* Полоска */
         .slider {
             position: absolute;
             cursor: pointer;
@@ -94,7 +127,6 @@
             transition: 0.4s;
             border-radius: 28px;
         }
-        /* Кружок */
         .slider:before {
             position: absolute;
             content: "";
@@ -108,7 +140,6 @@
             border-radius: 50%;
             box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }
-        /* Активное состояние */
         input:checked + .slider {
             background-color: #ff4444;
         }
@@ -126,10 +157,10 @@
             height: 20px;
             border-radius: 10px;
             background: linear-gradient(to right, 
-                #00008B, /* темно-синий */
-                #0000FF, /* синий */
-                #87CEFA, /* светло-синий */
-                #FFFFFF  /* белый */
+                #00008B,
+                #0000FF,
+                #87CEFA,
+                #FFFFFF
             );
             box-shadow: 0 0 10px rgba(0,0,0,0.7);
             z-index: 15;
@@ -150,7 +181,7 @@
             font-weight: bold;
         }
 
-        /* Стили всплывающей подсказки */
+        /* Всплывающие подсказки */
         .mapboxgl-popup-content {
             background: rgba(30, 30, 30, 0.85);
             color: #f0f0f0;
@@ -170,6 +201,10 @@
     <button id="prev-week" title="Назад на неделю">←</button>
     <input type="text" id="date-input" readonly />
     <button id="next-week" title="Вперед на неделю">→</button>
+    <div id="loading-spinner" style="display:none;">
+    <div class="spinner-ring"></div>
+    <span id="spinner-count"></span>
+    </div>
 </div>
 
 <div id="stroke-toggle-container">
@@ -177,7 +212,7 @@
     <input type="checkbox" id="stroke-toggle" checked>
     <span class="slider"></span>
   </label>
-  <span style="color: white; margin-left: 10px; user-select: none;">Красная окантовка интерполированных точек</span>
+  <span style="color: white; user-select: none;">Красная окантовка интерполированных точек</span>
 </div>
 
 <div id="map"></div>
@@ -201,6 +236,40 @@ const map = new mapboxgl.Map({
     center: [0, 80],
     zoom: 2
 });
+
+const spinner = document.getElementById('loading-spinner');
+const spinnerCount = document.getElementById('spinner-count');
+
+let activeRequests = 0;
+
+function showSpinner() {
+    spinner.style.display = 'inline-block';
+    if (activeRequests > 1) {
+        spinnerCount.textContent = activeRequests;
+    } else {
+        spinnerCount.textContent = '';
+    }
+}
+
+function hideSpinner() {
+    spinner.style.display = 'none';
+    spinnerCount.textContent = '';
+}
+
+function startRequest() {
+    activeRequests++;
+    showSpinner();
+}
+
+function endRequest() {
+    activeRequests--;
+    if (activeRequests <= 0) {
+        activeRequests = 0;
+        hideSpinner();
+    } else {
+        spinnerCount.textContent = activeRequests > 1 ? activeRequests : '';
+    }
+}
 
 // Цветовая функция
 function getColorByDensity(d) {
@@ -325,7 +394,16 @@ function setupPopups() {
     });
 }
 
+function styleInterpPointsLayer(isStrokeOn) {
+    if (!map.getLayer('interp-points-layer')) return;
+    map.setPaintProperty('interp-points-layer', 'circle-stroke-color', isStrokeOn ? 'red' : 'transparent');
+    map.setPaintProperty('interp-points-layer', 'circle-stroke-width', isStrokeOn ? 2 : 0);
+    map.setPaintProperty('interp-points-layer', 'circle-radius', isStrokeOn ? 6 : 4);
+    map.setPaintProperty('interp-points-layer', 'circle-opacity', isStrokeOn ? 0.9 : 0.5);
+}
+
 function loadDataForDate(dateStr) {
+    startRequest();
     fetch(`/data?date=${dateStr}`)
         .then(response => response.json())
         .then(({real_points, interp_points}) => {
@@ -343,18 +421,41 @@ function loadDataForDate(dateStr) {
             });
 
             addOrUpdateLayer('interp-points-layer', interpData, {
-                'circle-radius': 4,
+                'circle-radius': strokeToggle.checked ? 6 : 4,
                 'circle-color': ['get', 'color'],
-                'circle-opacity': 0.5,
+                'circle-opacity': strokeToggle.checked ? 0.9 : 0.5,
                 'circle-stroke-color': strokeToggle.checked ? 'red' : 'transparent',
                 'circle-stroke-width': strokeToggle.checked ? 2 : 0,
                 'circle-blur': 0.5
             });
 
+            styleInterpPointsLayer(strokeToggle.checked);
+
             if (!popupReal && !popupInterp) {
                 setupPopups();
             }
+        })
+        .catch(() => {
+            // Обработка ошибок (если нужно)
+        })
+        .finally(() => {
+            endRequest();
         });
+}
+
+function startRequest() {
+    activeRequests++;
+    showSpinner();
+}
+
+function endRequest() {
+    activeRequests--;
+    if (activeRequests <= 0) {
+        activeRequests = 0;
+        hideSpinner();
+    } else {
+        spinnerCount.textContent = activeRequests > 1 ? activeRequests : '';
+    }
 }
 
 map.on('load', () => {
@@ -386,15 +487,8 @@ map.on('load', () => {
     prevWeekBtn.addEventListener('click', () => shiftDate(-7));
     nextWeekBtn.addEventListener('click', () => shiftDate(7));
 
-    strokeToggle.addEventListener('change', () => {
-        if (!map.getLayer('interp-points-layer')) return;
-        if (strokeToggle.checked) {
-            map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'red');
-            map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 2);
-        } else {
-            map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'transparent');
-            map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 0);
-        }
+    strokeToggle.addEventListener('change', function() {
+        styleInterpPointsLayer(this.checked);
     });
 
     loadDataForDate("2019-01-08");
