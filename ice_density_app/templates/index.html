@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Ice Density Visualization with Legend and Styled Tooltip</title>
+    <title>Ice Density Visualization with Interpolation Layers</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
@@ -62,7 +62,7 @@
             width: 300px;
             height: 20px;
             border-radius: 10px;
-            background: linear-gradient(to right,
+            background: linear-gradient(to right, 
                 #00008B, /* темно-синий */
                 #0000FF, /* синий */
                 #87CEFA, /* светло-синий */
@@ -127,13 +127,13 @@ mapboxgl.accessToken = '{{ mapbox_token }}';
 const map = new mapboxgl.Map({
     container: 'map',
     style: 'mapbox://styles/mapbox/dark-v11',
-    projection: 'globe', // обязательно!
     center: [0, 80],
     zoom: 2
 });
 
+// Цветовая функция (темно-синий - синий - светло-синий - белый)
 function getColorByDensity(d) {
-    const maxDensity = 25; // изменён диапазон
+    const maxDensity = 25;
     const ratio = Math.min(d / maxDensity, 1);
 
     const stops = [
@@ -143,7 +143,7 @@ function getColorByDensity(d) {
         {stop: 1.00, color: [255, 255, 255]}  // белый
     ];
 
-    for (let i = 0; i < stops.length -1; i++) {
+    for (let i = 0; i < stops.length - 1; i++) {
         if (ratio >= stops[i].stop && ratio <= stops[i+1].stop) {
             let t = (ratio - stops[i].stop) / (stops[i+1].stop - stops[i].stop);
             let r = Math.round(stops[i].color[0] + t * (stops[i+1].color[0] - stops[i].color[0]));
@@ -152,16 +152,16 @@ function getColorByDensity(d) {
             return `rgb(${r},${g},${b})`;
         }
     }
-    return 'rgb(128,0,0)';
+    return 'rgb(255,255,255)';
 }
 
-let popup = null;
+let popupReal = null;
+let popupInterp = null;
 
-function loadDataForDate(dateStr) {
-    fetch(`/data?date=${dateStr}`)
-    .then(response => response.json())
-    .then(data => {
-        const features = data.map(point => ({
+function createGeoJSON(points) {
+    return {
+        type: 'FeatureCollection',
+        features: points.map(point => ({
             type: 'Feature',
             geometry: {
                 type: 'Point',
@@ -171,62 +171,121 @@ function loadDataForDate(dateStr) {
                 density: point.density,
                 color: getColorByDensity(point.density)
             }
-        }));
+        }))
+    };
+}
 
-        if (map.getSource('ice-points')) {
-            map.getSource('ice-points').setData({
-                type: 'FeatureCollection',
-                features: features
-            });
-        } else {
-            map.addSource('ice-points', {
-                type: 'geojson',
-                data: {
-                    type: 'FeatureCollection',
-                    features: features
-                }
-            });
+function addOrUpdateLayer(id, data, paintProps) {
+    if (map.getSource(id)) {
+        map.getSource(id).setData(data);
+    } else {
+        map.addSource(id, {
+            type: 'geojson',
+            data: data
+        });
 
-            map.addLayer({
-                id: 'ice-points-layer',
-                type: 'circle',
-                source: 'ice-points',
-                paint: {
-                    'circle-radius': 5,
-                    'circle-color': ['get', 'color'],
-                    'circle-opacity': 0.8
-                }
-            });
+        map.addLayer({
+            id: id,
+            type: 'circle',
+            source: id,
+            paint: paintProps
+        });
+    }
+}
 
-            popup = new mapboxgl.Popup({
-                closeButton: false,
-                closeOnClick: false
-            });
-
-            map.on('mouseenter', 'ice-points-layer', (e) => {
-                map.getCanvas().style.cursor = 'pointer';
-                const coordinates = e.features[0].geometry.coordinates.slice();
-                const density = parseFloat(e.features[0].properties.density).toFixed(2);
-                const lon = coordinates[0].toFixed(4);
-                const lat = coordinates[1].toFixed(4);
-
-                popup.setLngLat(coordinates)
-                    .setHTML(`
-                        <div>
-                            <div><strong>Density:</strong> ${density}</div>
-                            <div><strong>Longitude:</strong> ${lon}</div>
-                            <div><strong>Latitude:</strong> ${lat}</div>
-                        </div>
-                    `)
-                    .addTo(map);
-            });
-
-            map.on('mouseleave', 'ice-points-layer', () => {
-                map.getCanvas().style.cursor = '';
-                popup.remove();
-            });
-        }
+function setupPopups() {
+    // Реальные данные — более яркий popup
+    popupReal = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false
     });
+
+    map.on('mouseenter', 'real-points-layer', (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+        const coordinates = e.features[0].geometry.coordinates.slice();
+        const density = parseFloat(e.features[0].properties.density).toFixed(2);
+        const lon = coordinates[0].toFixed(4);
+        const lat = coordinates[1].toFixed(4);
+
+        popupReal.setLngLat(coordinates)
+            .setHTML(`
+                <div>
+                    <div><strong>Real Data</strong></div>
+                    <div><strong>Density:</strong> ${density}</div>
+                    <div><strong>Longitude:</strong> ${lon}</div>
+                    <div><strong>Latitude:</strong> ${lat}</div>
+                </div>
+            `)
+            .addTo(map);
+    });
+
+    map.on('mouseleave', 'real-points-layer', () => {
+        map.getCanvas().style.cursor = '';
+        popupReal.remove();
+    });
+
+    // Интерполированные — popup с другим стилем
+    popupInterp = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        className: 'interp-popup'  // можно кастомный класс, если захочешь стилизовать иначе
+    });
+
+    map.on('mouseenter', 'interp-points-layer', (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+        const coordinates = e.features[0].geometry.coordinates.slice();
+        const density = parseFloat(e.features[0].properties.density).toFixed(2);
+        const lon = coordinates[0].toFixed(4);
+        const lat = coordinates[1].toFixed(4);
+
+        popupInterp.setLngLat(coordinates)
+            .setHTML(`
+                <div>
+                    <div><strong>Interpolated Data</strong></div>
+                    <div><strong>Density:</strong> ${density}</div>
+                    <div><strong>Longitude:</strong> ${lon}</div>
+                    <div><strong>Latitude:</strong> ${lat}</div>
+                </div>
+            `)
+            .addTo(map);
+    });
+
+    map.on('mouseleave', 'interp-points-layer', () => {
+        map.getCanvas().style.cursor = '';
+        popupInterp.remove();
+    });
+}
+
+function loadDataForDate(dateStr) {
+    fetch(`/data?date=${dateStr}`)
+        .then(response => response.json())
+        .then(({real_points, interp_points}) => {
+            const realData = createGeoJSON(real_points);
+            const interpData = createGeoJSON(interp_points);
+
+            // Реальные точки — более яркие, насыщенные
+            addOrUpdateLayer('real-points-layer', realData, {
+                'circle-radius': 6,
+                'circle-color': ['get', 'color'],
+                'circle-opacity': 0.9,
+                'circle-stroke-color': '#000',
+                'circle-stroke-width': 1
+            });
+
+            // Интерполированные точки — более прозрачные и чуть меньше
+            addOrUpdateLayer('interp-points-layer', interpData, {
+                'circle-radius': 4,
+                'circle-color': ['get', 'color'],
+                'circle-opacity': 0.5,
+                'circle-stroke-color': '#555',
+                'circle-stroke-width': 0.5,
+                'circle-blur': 0.5
+            });
+
+            if (!popupReal && !popupInterp) {
+                setupPopups();
+            }
+        });
 }
 
 map.on('load', () => {
@@ -260,5 +319,6 @@ map.on('load', () => {
     loadDataForDate("2019-01-08");
 });
 </script>
+
 </body>
 </html>
