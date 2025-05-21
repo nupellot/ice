@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Ice Density Visualization with Request Count Spinner</title>
+    <title>Ice Density Visualization with Kriging</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
@@ -13,7 +13,6 @@
         body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
         #map { width: 100%; height: 100%; position: relative; }
 
-        /* Панель с выбором даты и спиннером */
         #date-picker-container {
             position: absolute;
             top: 10px;
@@ -48,27 +47,17 @@
             color: #ffd966;
         }
 
-        /* Спиннер загрузки с числом */
         #loading-spinner {
-            position: relative;
             margin-left: 10px;
-            width: 18px;
-            height: 18px;
-        }
-
-        #loading-spinner .spinner-ring {
-            box-sizing: border-box;
-            position: absolute;
+            position: relative;
             width: 18px;
             height: 18px;
             border: 3px solid rgba(255, 255, 255, 0.3);
             border-top-color: white;
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            top: 0;
-            left: 0;
+            display: none;
         }
-
         #spinner-count {
             position: absolute;
             top: 50%;
@@ -82,14 +71,10 @@
             font-family: Arial, sans-serif;
             line-height: 1;
         }
-
-        /* Ключевые кадры для вращения */
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
 
-
-        /* Тумблер переключатель-рычажок */
         #stroke-toggle-container {
             position: absolute;
             top: 10px;
@@ -103,13 +88,13 @@
             user-select: none;
             display: flex;
             align-items: center;
+            gap: 15px;
         }
         .switch {
             position: relative;
             display: inline-block;
             width: 50px;
             height: 28px;
-            margin-right: 10px;
         }
         .switch input {
             opacity: 0;
@@ -147,7 +132,21 @@
             transform: translate(22px, -50%);
         }
 
-        /* Легенда (полоска с градиентом) */
+        #method-label {
+            user-select: none;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        #method-select {
+            font-size: 14px;
+            border-radius: 4px;
+            border: 1px solid #aaa;
+            padding: 2px 10px;
+            background: #181818;
+            color: white;
+            margin-left: 5px;
+        }
+
         #legend {
             position: absolute;
             bottom: 20px;
@@ -180,8 +179,6 @@
             z-index: 15;
             font-weight: bold;
         }
-
-        /* Всплывающие подсказки */
         .mapboxgl-popup-content {
             background: rgba(30, 30, 30, 0.85);
             color: #f0f0f0;
@@ -201,9 +198,8 @@
     <button id="prev-week" title="Назад на неделю">←</button>
     <input type="text" id="date-input" readonly />
     <button id="next-week" title="Вперед на неделю">→</button>
-    <div id="loading-spinner" style="display:none;">
-    <div class="spinner-ring"></div>
-    <span id="spinner-count"></span>
+    <div id="loading-spinner">
+        <span id="spinner-count"></span>
     </div>
 </div>
 
@@ -212,7 +208,13 @@
     <input type="checkbox" id="stroke-toggle" checked>
     <span class="slider"></span>
   </label>
-  <span style="color: white; user-select: none;">Красная окантовка интерполированных точек</span>
+  <span>Красная окантовка интерполированных точек</span>
+  <label id="method-label" for="method-select">Метод интерполяции:</label>
+  <select id="method-select">
+    <option value="temporal" selected>Временной</option>
+    <option value="spatial">Пространственный (простой)</option>
+    <option value="kriging">Кригинг</option>
+  </select>
 </div>
 
 <div id="map"></div>
@@ -271,24 +273,21 @@ function endRequest() {
     }
 }
 
-// Цветовая функция
 function getColorByDensity(d) {
     const maxDensity = 25;
     const ratio = Math.min(d / maxDensity, 1);
-
     const stops = [
-        {stop: 0.00, color: [0, 0, 139]},     // темно-синий
-        {stop: 0.33, color: [0, 0, 255]},     // синий
-        {stop: 0.66, color: [135, 206, 250]}, // светло-синий
-        {stop: 1.00, color: [255, 255, 255]}  // белый
+        {stop: 0.00, color: [0, 0, 139]},
+        {stop: 0.33, color: [0, 0, 255]},
+        {stop: 0.66, color: [135, 206, 250]},
+        {stop: 1.00, color: [255, 255, 255]}
     ];
-
     for (let i = 0; i < stops.length - 1; i++) {
-        if (ratio >= stops[i].stop && ratio <= stops[i+1].stop) {
-            let t = (ratio - stops[i].stop) / (stops[i+1].stop - stops[i].stop);
-            let r = Math.round(stops[i].color[0] + t * (stops[i+1].color[0] - stops[i].color[0]));
-            let g = Math.round(stops[i].color[1] + t * (stops[i+1].color[1] - stops[i].color[1]));
-            let b = Math.round(stops[i].color[2] + t * (stops[i+1].color[2] - stops[i].color[2]));
+        if (ratio >= stops[i].stop && ratio <= stops[i + 1].stop) {
+            let t = (ratio - stops[i].stop) / (stops[i + 1].stop - stops[i].stop);
+            let r = Math.round(stops[i].color[0] + t * (stops[i + 1].color[0] - stops[i].color[0]));
+            let g = Math.round(stops[i].color[1] + t * (stops[i + 1].color[1] - stops[i].color[1]));
+            let b = Math.round(stops[i].color[2] + t * (stops[i + 1].color[2] - stops[i].color[2]));
             return `rgb(${r},${g},${b})`;
         }
     }
@@ -323,7 +322,6 @@ function addOrUpdateLayer(id, data, paintProps) {
             type: 'geojson',
             data: data
         });
-
         map.addLayer({
             id: id,
             type: 'circle',
@@ -334,60 +332,43 @@ function addOrUpdateLayer(id, data, paintProps) {
 }
 
 function setupPopups() {
-    popupReal = new mapboxgl.Popup({
-        closeButton: false,
-        closeOnClick: false
-    });
-
+    popupReal = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
     map.on('mouseenter', 'real-points-layer', (e) => {
         map.getCanvas().style.cursor = 'pointer';
-        const coordinates = e.features[0].geometry.coordinates.slice();
+        const coords = e.features[0].geometry.coordinates.slice();
         const density = parseFloat(e.features[0].properties.density).toFixed(2);
-        const lon = coordinates[0].toFixed(4);
-        const lat = coordinates[1].toFixed(4);
-
-        popupReal.setLngLat(coordinates)
-            .setHTML(`
-                <div>
-                    <div><strong>Real Data</strong></div>
-                    <div><strong>Density:</strong> ${density}</div>
-                    <div><strong>Longitude:</strong> ${lon}</div>
-                    <div><strong>Latitude:</strong> ${lat}</div>
-                </div>
-            `)
-            .addTo(map);
+        const lon = coords[0].toFixed(4);
+        const lat = coords[1].toFixed(4);
+        popupReal.setLngLat(coords).setHTML(
+            `<div>
+                <div><strong>Real Data</strong></div>
+                <div><strong>Density:</strong> ${density}</div>
+                <div><strong>Longitude:</strong> ${lon}</div>
+                <div><strong>Latitude:</strong> ${lat}</div>
+            </div>`
+        ).addTo(map);
     });
-
     map.on('mouseleave', 'real-points-layer', () => {
         map.getCanvas().style.cursor = '';
         popupReal.remove();
     });
 
-    popupInterp = new mapboxgl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-        className: 'interp-popup'
-    });
-
+    popupInterp = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'interp-popup' });
     map.on('mouseenter', 'interp-points-layer', (e) => {
         map.getCanvas().style.cursor = 'pointer';
-        const coordinates = e.features[0].geometry.coordinates.slice();
+        const coords = e.features[0].geometry.coordinates.slice();
         const density = parseFloat(e.features[0].properties.density).toFixed(2);
-        const lon = coordinates[0].toFixed(4);
-        const lat = coordinates[1].toFixed(4);
-
-        popupInterp.setLngLat(coordinates)
-            .setHTML(`
-                <div>
-                    <div><strong>Interpolated Data</strong></div>
-                    <div><strong>Density:</strong> ${density}</div>
-                    <div><strong>Longitude:</strong> ${lon}</div>
-                    <div><strong>Latitude:</strong> ${lat}</div>
-                </div>
-            `)
-            .addTo(map);
+        const lon = coords[0].toFixed(4);
+        const lat = coords[1].toFixed(4);
+        popupInterp.setLngLat(coords).setHTML(
+            `<div>
+                <div><strong>Interpolated Data</strong></div>
+                <div><strong>Density:</strong> ${density}</div>
+                <div><strong>Longitude:</strong> ${lon}</div>
+                <div><strong>Latitude:</strong> ${lat}</div>
+            </div>`
+        ).addTo(map);
     });
-
     map.on('mouseleave', 'interp-points-layer', () => {
         map.getCanvas().style.cursor = '';
         popupInterp.remove();
@@ -402,16 +383,14 @@ function styleInterpPointsLayer(isStrokeOn) {
     map.setPaintProperty('interp-points-layer', 'circle-opacity', isStrokeOn ? 0.9 : 0.5);
 }
 
-function loadDataForDate(dateStr) {
+function loadDataForDate(dateStr, method) {
     startRequest();
-    fetch(`/data?date=${dateStr}`)
+    fetch(`/data?date=${dateStr}&method=${method}`)
         .then(response => response.json())
         .then(({real_points, interp_points}) => {
             const realData = createGeoJSON(real_points);
             const interpData = createGeoJSON(interp_points);
-
             const strokeToggle = document.getElementById('stroke-toggle');
-
             addOrUpdateLayer('real-points-layer', realData, {
                 'circle-radius': 6,
                 'circle-color': ['get', 'color'],
@@ -419,7 +398,6 @@ function loadDataForDate(dateStr) {
                 'circle-stroke-color': '#000',
                 'circle-stroke-width': 1
             });
-
             addOrUpdateLayer('interp-points-layer', interpData, {
                 'circle-radius': strokeToggle.checked ? 6 : 4,
                 'circle-color': ['get', 'color'],
@@ -428,34 +406,15 @@ function loadDataForDate(dateStr) {
                 'circle-stroke-width': strokeToggle.checked ? 2 : 0,
                 'circle-blur': 0.5
             });
-
             styleInterpPointsLayer(strokeToggle.checked);
-
             if (!popupReal && !popupInterp) {
                 setupPopups();
             }
         })
-        .catch(() => {
-            // Обработка ошибок (если нужно)
-        })
+        .catch(() => {})
         .finally(() => {
             endRequest();
         });
-}
-
-function startRequest() {
-    activeRequests++;
-    showSpinner();
-}
-
-function endRequest() {
-    activeRequests--;
-    if (activeRequests <= 0) {
-        activeRequests = 0;
-        hideSpinner();
-    } else {
-        spinnerCount.textContent = activeRequests > 1 ? activeRequests : '';
-    }
 }
 
 map.on('load', () => {
@@ -463,6 +422,7 @@ map.on('load', () => {
     const prevWeekBtn = document.getElementById('prev-week');
     const nextWeekBtn = document.getElementById('next-week');
     const strokeToggle = document.getElementById('stroke-toggle');
+    const methodSelect = document.getElementById('method-select');
 
     const fp = flatpickr(dateInput, {
         dateFormat: "Y-m-d",
@@ -470,7 +430,7 @@ map.on('load', () => {
         maxDate: new Date().fp_incr(0),
         onChange: function(selectedDates, dateStr) {
             if (dateStr) {
-                loadDataForDate(dateStr);
+                loadDataForDate(dateStr, methodSelect.value);
             }
         }
     });
@@ -480,7 +440,6 @@ map.on('load', () => {
         const newDate = new Date(currentDate);
         newDate.setDate(currentDate.getDate() + days);
         if (newDate > new Date()) return;
-
         fp.setDate(newDate, true);
     }
 
@@ -491,7 +450,14 @@ map.on('load', () => {
         styleInterpPointsLayer(this.checked);
     });
 
-    loadDataForDate("2019-01-08");
+    methodSelect.addEventListener('change', () => {
+        const dateStr = dateInput.value;
+        if (dateStr) {
+            loadDataForDate(dateStr, methodSelect.value);
+        }
+    });
+
+    loadDataForDate("2019-01-08", methodSelect.value);
 });
 </script>
 
