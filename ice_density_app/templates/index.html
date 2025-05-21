@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Ice Density Visualization with Interpolation Layers</title>
+    <title>Ice Density Visualization with Stylish Centered Switch</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
@@ -51,6 +51,69 @@
         }
         #prev-week:hover, #next-week:hover {
             color: #ffd966;
+        }
+
+        /* --- Новый современный тумблер --- */
+        #stroke-toggle-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 20;
+            background: rgba(0,0,0,0.7);
+            padding: 8px 12px;
+            border-radius: 6px;
+            color: white;
+            font-family: sans-serif;
+            user-select: none;
+            display: flex;
+            align-items: center;
+        }
+        /* Стиль для switch-обертки */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 28px;
+            margin-right: 10px;
+        }
+        /* Сам чекбокс скрыт */
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        /* Полоска */
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.4s;
+            border-radius: 28px;
+        }
+        /* Кружок */
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        /* Активное состояние */
+        input:checked + .slider {
+            background-color: #ff4444;
+        }
+        input:checked + .slider:before {
+            transform: translate(22px, -50%);
         }
 
         /* Легенда (полоска с градиентом) */
@@ -109,6 +172,14 @@
     <button id="next-week" title="Вперед на неделю">→</button>
 </div>
 
+<div id="stroke-toggle-container">
+  <label class="switch">
+    <input type="checkbox" id="stroke-toggle" checked>
+    <span class="slider"></span>
+  </label>
+  <span style="color: white; margin-left: 10px; user-select: none;">Красная окантовка интерполированных точек</span>
+</div>
+
 <div id="map"></div>
 
 <div id="legend"></div>
@@ -131,7 +202,7 @@ const map = new mapboxgl.Map({
     zoom: 2
 });
 
-// Цветовая функция (темно-синий - синий - светло-синий - белый)
+// Цветовая функция
 function getColorByDensity(d) {
     const maxDensity = 25;
     const ratio = Math.min(d / maxDensity, 1);
@@ -194,7 +265,6 @@ function addOrUpdateLayer(id, data, paintProps) {
 }
 
 function setupPopups() {
-    // Реальные данные — более яркий popup
     popupReal = new mapboxgl.Popup({
         closeButton: false,
         closeOnClick: false
@@ -224,11 +294,10 @@ function setupPopups() {
         popupReal.remove();
     });
 
-    // Интерполированные — popup с другим стилем
     popupInterp = new mapboxgl.Popup({
         closeButton: false,
         closeOnClick: false,
-        className: 'interp-popup'  // можно кастомный класс, если захочешь стилизовать иначе
+        className: 'interp-popup'
     });
 
     map.on('mouseenter', 'interp-points-layer', (e) => {
@@ -263,7 +332,8 @@ function loadDataForDate(dateStr) {
             const realData = createGeoJSON(real_points);
             const interpData = createGeoJSON(interp_points);
 
-            // Реальные точки — более яркие, насыщенные
+            const strokeToggle = document.getElementById('stroke-toggle');
+
             addOrUpdateLayer('real-points-layer', realData, {
                 'circle-radius': 6,
                 'circle-color': ['get', 'color'],
@@ -272,16 +342,14 @@ function loadDataForDate(dateStr) {
                 'circle-stroke-width': 1
             });
 
-            // Интерполированные точки — более прозрачные и чуть меньше
             addOrUpdateLayer('interp-points-layer', interpData, {
                 'circle-radius': 4,
                 'circle-color': ['get', 'color'],
                 'circle-opacity': 0.5,
-                'circle-stroke-color': 'red',      // красная окантовка
-                'circle-stroke-width': 2,          // толщина линии
+                'circle-stroke-color': strokeToggle.checked ? 'red' : 'transparent',
+                'circle-stroke-width': strokeToggle.checked ? 2 : 0,
                 'circle-blur': 0.5
             });
-
 
             if (!popupReal && !popupInterp) {
                 setupPopups();
@@ -293,6 +361,7 @@ map.on('load', () => {
     const dateInput = document.getElementById('date-input');
     const prevWeekBtn = document.getElementById('prev-week');
     const nextWeekBtn = document.getElementById('next-week');
+    const strokeToggle = document.getElementById('stroke-toggle');
 
     const fp = flatpickr(dateInput, {
         dateFormat: "Y-m-d",
@@ -316,6 +385,17 @@ map.on('load', () => {
 
     prevWeekBtn.addEventListener('click', () => shiftDate(-7));
     nextWeekBtn.addEventListener('click', () => shiftDate(7));
+
+    strokeToggle.addEventListener('change', () => {
+        if (!map.getLayer('interp-points-layer')) return;
+        if (strokeToggle.checked) {
+            map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'red');
+            map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 2);
+        } else {
+            map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'transparent');
+            map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 0);
+        }
+    });
 
     loadDataForDate("2019-01-08");
 });
