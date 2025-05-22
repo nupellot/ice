@@ -91,10 +91,7 @@ class SpatialInterpolator(InterpolatorBase):
         return interp_results
 
 class KrigingInterpolator(InterpolatorBase):
-    """
-    Оптимизированный кригинг с ограничением радиуса и числа соседей.
-    """
-    def __init__(self, sill=34.37, range_param=59.15, max_neighbors=30, max_radius_km=300):
+    def __init__(self, sill=34.37, range_param=59.15, max_neighbors=10, max_radius_km=30):
         self.sill = sill
         self.range = range_param
         self.max_neighbors = max_neighbors
@@ -104,13 +101,10 @@ class KrigingInterpolator(InterpolatorBase):
         return self.sill * (1 - np.exp(-h / self.range))
 
     @staticmethod
-    def haversine(coord1, coord2):
-        # Возвращает расстояние в километрах между двумя координатами (lon, lat)
-        lon1, lat1 = np.radians(coord1)
-        lon2, lat2 = np.radians(coord2)
+    def haversine_np(lon1, lat1, lon2, lat2):
         dlon = lon2 - lon1
         dlat = lat2 - lat1
-        a = np.sin(dlat/2)**2 + np.cos(lat1)*np.cos(lat2)*np.sin(dlon/2)**2
+        a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
         c = 2 * np.arcsin(np.sqrt(a))
         return 6371 * c
 
@@ -119,29 +113,36 @@ class KrigingInterpolator(InterpolatorBase):
             return {}
         known_coords = np.array([[p['longitude'], p['latitude']] for p in known_points])
         known_values = np.array([p['density'] for p in known_points])
+        known_lons = np.radians(known_coords[:, 0])
+        known_lats = np.radians(known_coords[:, 1])
         interp_results = {}
         known_coords_set = {(p['longitude'], p['latitude']) for p in known_points}
-        for coord in coords_to_interpolate:
+        coords_to_interpolate = list(coords_to_interpolate)
+        import time
+        t0 = time.time()
+        for idx, coord in enumerate(coords_to_interpolate):
+            if idx % 100 == 0 and idx > 0:
+                print(f'{idx} / {len(coords_to_interpolate)} points, elapsed: {time.time()-t0:.2f} sec')
             if coord in known_coords_set:
                 continue
-            # 1. Считаем расстояния до всех известных точек (Haversine, в км)
-            dists = np.array([self.haversine(coord, tuple(kc)) for kc in known_coords])
+            clon, clat = np.radians(coord)
+            dists = self.haversine_np(clon, clat, known_lons, known_lats)
             sorted_idx = np.argsort(dists)
-            # 2. Оставляем только ближайших max_neighbors и не дальше max_radius_km
             valid = sorted_idx[dists[sorted_idx] <= self.max_radius_km][:self.max_neighbors]
             if len(valid) < 3:
-                continue  # Для устойчивости требуем хотя бы 3 соседа
+                continue
             coords_used = known_coords[valid]
             values_used = known_values[valid]
             n = len(coords_used)
-            # 3. Классический кригинг для соседей
             gamma = self.variogram(cdist(coords_used, coords_used))
             mat = np.zeros((n + 1, n + 1))
             mat[:n, :n] = gamma
             mat[n, :n] = 1
             mat[:n, n] = 1
             mat[n, n] = 0
-            gamma_vec = self.variogram(cdist([coord], coords_used).flatten())
+            gamma_vec = self.variogram(
+                cdist([coord], coords_used)
+            ).flatten()
             rhs = np.append(gamma_vec, 1)
             try:
                 weights = solve(mat, rhs)
@@ -150,7 +151,9 @@ class KrigingInterpolator(InterpolatorBase):
             lambdas = weights[:-1]
             interp_value = np.dot(lambdas, values_used)
             interp_results[coord] = float(interp_value)
+        print(f"Kriging finished {len(coords_to_interpolate)} points in {time.time()-t0:.2f} sec")
         return interp_results
+
 
 # --- Загрузка данных и создание интерполяторов ---
 DF = pd.read_csv('density_below_85_latitude.csv', parse_dates=['date'])
@@ -160,7 +163,7 @@ UNIQUE_COORDS = set(zip(UNIQUE_COORDS_DF.longitude, UNIQUE_COORDS_DF.latitude))
 
 temporal_interpolator = TemporalInterpolator(DF, UNIQUE_COORDS)
 spatial_interpolator = SpatialInterpolator()
-kriging_interpolator = KrigingInterpolator(max_neighbors=30, max_radius_km=300)
+kriging_interpolator = KrigingInterpolator(max_neighbors=1000, max_radius_km=300)
 
 @app.route('/')
 def index():
