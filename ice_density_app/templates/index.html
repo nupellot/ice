@@ -2,17 +2,15 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Ice Density Visualization with Kriging</title>
+    <title>Ice Density Visualization — Стильная панель управления</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
-    <!-- flatpickr -->
     <link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet"/>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
         #map { width: 100%; height: 100%; position: relative; }
-
         #date-picker-container {
             position: absolute;
             top: 10px;
@@ -43,10 +41,7 @@
             color: white;
             user-select: none;
         }
-        #prev-week:hover, #next-week:hover {
-            color: #ffd966;
-        }
-
+        #prev-week:hover, #next-week:hover { color: #ffd966; }
         #loading-spinner {
             margin-left: 10px;
             position: relative;
@@ -74,79 +69,79 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-
-        #stroke-toggle-container {
+        /* Современная панель справа */
+        #control-panel {
             position: absolute;
             top: 10px;
             right: 10px;
-            z-index: 20;
-            background: rgba(0,0,0,0.7);
-            padding: 8px 12px;
-            border-radius: 6px;
+            z-index: 25;
+            background: rgba(0,0,0,0.88);
+            padding: 18px 16px 14px 16px;
+            border-radius: 14px;
             color: white;
-            font-family: sans-serif;
+            min-width: 230px;
+            box-shadow: 0 4px 20px 0 #000c;
             user-select: none;
+        }
+        .control-panel-header {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 14px;
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+        .control-panel-row {
             display: flex;
             align-items: center;
-            gap: 15px;
+            justify-content: space-between;
+            margin-bottom: 13px;
+            gap: 12px;
         }
+        .control-panel-row:last-child { margin-bottom: 0; }
         .switch {
             position: relative;
             display: inline-block;
-            width: 50px;
-            height: 28px;
+            width: 42px;
+            height: 24px;
+            margin-left: 10px;
         }
-        .switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
+        .switch input { opacity: 0; width: 0; height: 0; }
         .slider {
             position: absolute;
             cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #ccc;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #7a7a7a;
             transition: 0.4s;
-            border-radius: 28px;
+            border-radius: 24px;
         }
         .slider:before {
             position: absolute;
             content: "";
-            height: 22px;
-            width: 22px;
-            left: 3px;
-            top: 50%;
+            height: 18px; width: 18px;
+            left: 3px; top: 50%;
             transform: translateY(-50%);
-            background-color: white;
-            transition: 0.4s;
+            background: #fff;
             border-radius: 50%;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            transition: 0.4s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.22);
         }
-        input:checked + .slider {
-            background-color: #ff4444;
-        }
-        input:checked + .slider:before {
-            transform: translate(22px, -50%);
-        }
-
-        #method-label {
-            user-select: none;
+        input:checked + .slider { background: #36b37e; }
+        input:checked + .slider:before { transform: translate(18px, -50%); }
+        .styled-select {
+            flex: 1 1 80px;
+            padding: 5px 10px;
             font-size: 14px;
-            white-space: nowrap;
+            background: #232a34;
+            color: #eaeaea;
+            border: 1.3px solid #444d5a;
+            border-radius: 7px;
+            outline: none;
+            min-width: 90px;
+            max-width: 160px;
+            margin-left: 10px;
+            transition: border 0.2s;
         }
-        #method-select {
-            font-size: 14px;
-            border-radius: 4px;
-            border: 1px solid #aaa;
-            padding: 2px 10px;
-            background: #181818;
-            color: white;
-            margin-left: 5px;
-        }
-
+        .styled-select:focus { border: 1.6px solid #36b37e; }
         #legend {
             position: absolute;
             bottom: 20px;
@@ -155,12 +150,7 @@
             width: 300px;
             height: 20px;
             border-radius: 10px;
-            background: linear-gradient(to right, 
-                #00008B,
-                #0000FF,
-                #87CEFA,
-                #FFFFFF
-            );
+            background: linear-gradient(to right, #FFFFFF,#87CEFA,#0000FF,#00008B );
             box-shadow: 0 0 10px rgba(0,0,0,0.7);
             z-index: 15;
         }
@@ -203,18 +193,31 @@
     </div>
 </div>
 
-<div id="stroke-toggle-container">
-  <label class="switch">
-    <input type="checkbox" id="stroke-toggle" checked>
-    <span class="slider"></span>
-  </label>
-  <span>Красная окантовка интерполированных точек</span>
-  <label id="method-label" for="method-select">Метод интерполяции:</label>
-  <select id="method-select">
-    <option value="temporal" selected>Временной</option>
-    <option value="spatial">Пространственный (простой)</option>
-    <option value="kriging">Кригинг</option>
-  </select>
+<div id="control-panel">
+    <div class="control-panel-header">Интерполяция</div>
+    <div class="control-panel-row">
+        <span>Включить интерполяцию</span>
+        <label class="switch">
+            <input type="checkbox" id="interp-enable-switch" checked>
+            <span class="slider"></span>
+        </label>
+    </div>
+    <div class="control-panel-row" id="interp-method-row">
+        <span>Метод</span>
+        <select id="method-select" class="styled-select">
+            <option value="temporal" selected>Временной</option>
+            <option value="spatial">Пространственный</option>
+            <option value="kriging">Кригинг</option>
+            <option value="delaunay">Делоне</option>
+        </select>
+    </div>
+    <div class="control-panel-row">
+        <span>Подсветка</span>
+        <label class="switch">
+            <input type="checkbox" id="stroke-toggle" checked>
+            <span class="slider"></span>
+        </label>
+    </div>
 </div>
 
 <div id="map"></div>
@@ -226,56 +229,34 @@
     <span>10</span>
     <span>15</span>
     <span>20</span>
-    <span>25</span>
+    <span>22</span>
 </div>
 
 <script>
 mapboxgl.accessToken = '{{ mapbox_token }}';
-
 const map = new mapboxgl.Map({
     container: 'map',
     style: 'mapbox://styles/mapbox/dark-v11',
     center: [0, 80],
     zoom: 2
 });
-
 const spinner = document.getElementById('loading-spinner');
 const spinnerCount = document.getElementById('spinner-count');
-
 let activeRequests = 0;
-
 function showSpinner() {
     spinner.style.display = 'inline-block';
-    if (activeRequests > 1) {
-        spinnerCount.textContent = activeRequests;
-    } else {
-        spinnerCount.textContent = '';
-    }
+    spinnerCount.textContent = (activeRequests > 1) ? activeRequests : '';
 }
-
-function hideSpinner() {
-    spinner.style.display = 'none';
-    spinnerCount.textContent = '';
-}
-
-function startRequest() {
-    activeRequests++;
-    showSpinner();
-}
-
+function hideSpinner() { spinner.style.display = 'none'; spinnerCount.textContent = ''; }
+function startRequest() { activeRequests++; showSpinner(); }
 function endRequest() {
     activeRequests--;
-    if (activeRequests <= 0) {
-        activeRequests = 0;
-        hideSpinner();
-    } else {
-        spinnerCount.textContent = activeRequests > 1 ? activeRequests : '';
-    }
+    if (activeRequests <= 0) { activeRequests = 0; hideSpinner(); }
+    else { spinnerCount.textContent = activeRequests > 1 ? activeRequests : ''; }
 }
-
 function getColorByDensity(d) {
-    const maxDensity = 25;
-    const ratio = Math.min(d / maxDensity, 1);
+    const maxDensity = 22;
+    let ratio = 1 - Math.min(d, maxDensity) / maxDensity;
     const stops = [
         {stop: 0.00, color: [0, 0, 139]},
         {stop: 0.33, color: [0, 0, 255]},
@@ -293,10 +274,8 @@ function getColorByDensity(d) {
     }
     return 'rgb(255,255,255)';
 }
-
 let popupReal = null;
 let popupInterp = null;
-
 function createGeoJSON(points) {
     return {
         type: 'FeatureCollection',
@@ -313,24 +292,13 @@ function createGeoJSON(points) {
         }))
     };
 }
-
 function addOrUpdateLayer(id, data, paintProps) {
-    if (map.getSource(id)) {
-        map.getSource(id).setData(data);
-    } else {
-        map.addSource(id, {
-            type: 'geojson',
-            data: data
-        });
-        map.addLayer({
-            id: id,
-            type: 'circle',
-            source: id,
-            paint: paintProps
-        });
+    if (map.getSource(id)) { map.getSource(id).setData(data); }
+    else {
+        map.addSource(id, { type: 'geojson', data: data });
+        map.addLayer({ id: id, type: 'circle', source: id, paint: paintProps });
     }
 }
-
 function setupPopups() {
     popupReal = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
     map.on('mouseenter', 'real-points-layer', (e) => {
@@ -352,7 +320,6 @@ function setupPopups() {
         map.getCanvas().style.cursor = '';
         popupReal.remove();
     });
-
     popupInterp = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'interp-popup' });
     map.on('mouseenter', 'interp-points-layer', (e) => {
         map.getCanvas().style.cursor = 'pointer';
@@ -374,7 +341,6 @@ function setupPopups() {
         popupInterp.remove();
     });
 }
-
 function styleInterpPointsLayer(isStrokeOn) {
     if (!map.getLayer('interp-points-layer')) return;
     map.setPaintProperty('interp-points-layer', 'circle-stroke-color', isStrokeOn ? 'red' : 'transparent');
@@ -382,15 +348,12 @@ function styleInterpPointsLayer(isStrokeOn) {
     map.setPaintProperty('interp-points-layer', 'circle-radius', isStrokeOn ? 6 : 4);
     map.setPaintProperty('interp-points-layer', 'circle-opacity', isStrokeOn ? 0.9 : 0.5);
 }
-
-function loadDataForDate(dateStr, method) {
+function loadDataForDate(dateStr, method, interpolationEnabled) {
     startRequest();
-    fetch(`/data?date=${dateStr}&method=${method}`)
+    fetch(`/data?date=${dateStr}&method=${interpolationEnabled ? method : 'none'}`)
         .then(response => response.json())
         .then(({real_points, interp_points}) => {
             const realData = createGeoJSON(real_points);
-            const interpData = createGeoJSON(interp_points);
-            const strokeToggle = document.getElementById('stroke-toggle');
             addOrUpdateLayer('real-points-layer', realData, {
                 'circle-radius': 6,
                 'circle-color': ['get', 'color'],
@@ -398,43 +361,43 @@ function loadDataForDate(dateStr, method) {
                 'circle-stroke-color': '#000',
                 'circle-stroke-width': 1
             });
-            addOrUpdateLayer('interp-points-layer', interpData, {
-                'circle-radius': strokeToggle.checked ? 6 : 4,
-                'circle-color': ['get', 'color'],
-                'circle-opacity': strokeToggle.checked ? 0.9 : 0.5,
-                'circle-stroke-color': strokeToggle.checked ? 'red' : 'transparent',
-                'circle-stroke-width': strokeToggle.checked ? 2 : 0,
-                'circle-blur': 0.5
-            });
-            styleInterpPointsLayer(strokeToggle.checked);
-            if (!popupReal && !popupInterp) {
-                setupPopups();
+            if (interpolationEnabled) {
+                const interpData = createGeoJSON(interp_points);
+                const strokeToggle = document.getElementById('stroke-toggle');
+                addOrUpdateLayer('interp-points-layer', interpData, {
+                    'circle-radius': strokeToggle.checked ? 6 : 4,
+                    'circle-color': ['get', 'color'],
+                    'circle-opacity': strokeToggle.checked ? 0.9 : 0.5,
+                    'circle-stroke-color': strokeToggle.checked ? 'red' : 'transparent',
+                    'circle-stroke-width': strokeToggle.checked ? 2 : 0,
+                    'circle-blur': 0.5
+                });
+                styleInterpPointsLayer(strokeToggle.checked);
+            } else {
+                if (map.getLayer('interp-points-layer')) map.removeLayer('interp-points-layer');
+                if (map.getSource('interp-points-layer')) map.removeSource('interp-points-layer');
             }
+            if (!popupReal && !popupInterp) { setupPopups(); }
         })
         .catch(() => {})
-        .finally(() => {
-            endRequest();
-        });
+        .finally(() => { endRequest(); });
 }
-
 map.on('load', () => {
     const dateInput = document.getElementById('date-input');
     const prevWeekBtn = document.getElementById('prev-week');
     const nextWeekBtn = document.getElementById('next-week');
     const strokeToggle = document.getElementById('stroke-toggle');
     const methodSelect = document.getElementById('method-select');
-
+    const interpEnableSwitch = document.getElementById('interp-enable-switch');
+    const interpMethodRow = document.getElementById('interp-method-row');
     const fp = flatpickr(dateInput, {
         dateFormat: "Y-m-d",
         defaultDate: "2019-01-08",
         maxDate: new Date().fp_incr(0),
         onChange: function(selectedDates, dateStr) {
-            if (dateStr) {
-                loadDataForDate(dateStr, methodSelect.value);
-            }
+            if (dateStr) loadDataForDate(dateStr, methodSelect.value, interpEnableSwitch.checked);
         }
     });
-
     function shiftDate(days) {
         const currentDate = fp.selectedDates[0] || new Date();
         const newDate = new Date(currentDate);
@@ -442,24 +405,20 @@ map.on('load', () => {
         if (newDate > new Date()) return;
         fp.setDate(newDate, true);
     }
-
     prevWeekBtn.addEventListener('click', () => shiftDate(-7));
     nextWeekBtn.addEventListener('click', () => shiftDate(7));
-
     strokeToggle.addEventListener('change', function() {
         styleInterpPointsLayer(this.checked);
     });
-
-    methodSelect.addEventListener('change', () => {
-        const dateStr = dateInput.value;
-        if (dateStr) {
-            loadDataForDate(dateStr, methodSelect.value);
-        }
+    interpEnableSwitch.addEventListener('change', () => {
+        interpMethodRow.style.display = interpEnableSwitch.checked ? 'flex' : 'none';
+        loadDataForDate(dateInput.value, methodSelect.value, interpEnableSwitch.checked);
     });
-
-    loadDataForDate("2019-01-08", methodSelect.value);
+    methodSelect.addEventListener('change', () => {
+        loadDataForDate(dateInput.value, methodSelect.value, interpEnableSwitch.checked);
+    });
+    loadDataForDate("2019-01-08", methodSelect.value, interpEnableSwitch.checked);
 });
 </script>
-
 </body>
 </html>
