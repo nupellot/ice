@@ -2,15 +2,15 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<title>Ice Density Visualization — Подсветка с тройным переключателем (исправленный v2)</title>
+<title>Ice Density Visualization — Исправленные всплывающие подсказки</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-<link href="https://api.mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
 <link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <style>
   body, html { margin:0; padding:0; height:100%; font-family: Arial, sans-serif; }
-  #map { width: 100%; height: 100%; position: relative; }
+  #map { position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100vw; height: 100vh; }
 
   #date-picker-container {
       position: absolute;
@@ -220,7 +220,6 @@
       border-top-color: rgba(30, 30, 30, 0.85);
   }
 
-  /* Тройной переключатель */
   .triple-toggle {
     position: relative;
     width: 176px;
@@ -236,7 +235,7 @@
     color: #bbb;
     align-items: center;
     overflow: hidden;
-    margin-left: 0; /* убираем доп. отступы */
+    margin-left: 0;
     margin-right: 0;
   }
   .triple-toggle__indicator {
@@ -271,7 +270,6 @@
   .triple-toggle input:checked + label {
     color: white;
   }
-  /* Центрируем переключатель относительно подписи */
   #highlight-mode-row {
     align-items: center;
   }
@@ -313,7 +311,6 @@
     <span>Метод</span>
     <select id="method-select" class="styled-select">
       <option value="temporal">Временной</option>
-      <option value="spatial">Пространственный</option>
       <option value="kriging">Кригинг</option>
       <option value="delaunay">Делоне</option>
     </select>
@@ -354,7 +351,6 @@
 <script>
   const ALL_METHODS = [
     { id: 'temporal', label: 'Временной' },
-    { id: 'spatial', label: 'Пространственный' },
     { id: 'kriging', label: 'Кригинг' },
     { id: 'delaunay', label: 'Делоне' }
   ];
@@ -461,20 +457,25 @@
 
   let popupReal = null;
   let popupInterp = null;
+
+  map.on('load', () => {
+    setupPopups();
+    updateAndReload();
+  });
+
   function setupPopups() {
     popupReal = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
     map.on('mouseenter', 'real-points-layer', e => {
+      if (!e.features.length) return;
       map.getCanvas().style.cursor = 'pointer';
       const coords = e.features[0].geometry.coordinates.slice();
-      const density = parseFloat(e.features[0].properties.density).toFixed(2);
-      const lon = coords[0].toFixed(4);
-      const lat = coords[1].toFixed(4);
+      const density = e.features[0].properties.density.toFixed(2);
       popupReal.setLngLat(coords).setHTML(
         `<div>
-          <div><strong>Real Data</strong></div>
-          <div><strong>Density:</strong> ${density}</div>
-          <div><strong>Longitude:</strong> ${lon}</div>
-          <div><strong>Latitude:</strong> ${lat}</div>
+          <strong>Real Data</strong><br/>
+          Плотность: ${density}<br/>
+          Долгота: ${coords[0].toFixed(4)}<br/>
+          Широта: ${coords[1].toFixed(4)}
         </div>`
       ).addTo(map);
     });
@@ -483,19 +484,18 @@
       popupReal.remove();
     });
 
-    popupInterp = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'interp-popup' });
+    popupInterp = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
     map.on('mouseenter', 'interp-points-layer', e => {
+      if (!e.features.length) return;
       map.getCanvas().style.cursor = 'pointer';
       const coords = e.features[0].geometry.coordinates.slice();
-      const density = parseFloat(e.features[0].properties.density).toFixed(2);
-      const lon = coords[0].toFixed(4);
-      const lat = coords[1].toFixed(4);
+      const density = e.features[0].properties.density.toFixed(2);
       popupInterp.setLngLat(coords).setHTML(
         `<div>
-          <div><strong>Interpolated Data</strong></div>
-          <div><strong>Density:</strong> ${density}</div>
-          <div><strong>Longitude:</strong> ${lon}</div>
-          <div><strong>Latitude:</strong> ${lat}</div>
+          <strong>Interpolated Data</strong><br/>
+          Плотность: ${density}<br/>
+          Долгота: ${coords[0].toFixed(4)}<br/>
+          Широта: ${coords[1].toFixed(4)}
         </div>`
       ).addTo(map);
     });
@@ -701,13 +701,34 @@
           if (map.getLayer('interp-points-layer')) map.removeLayer('interp-points-layer');
           if (map.getSource('interp-points-layer')) map.removeSource('interp-points-layer');
         }
-        if (!popupReal && !popupInterp) setupPopups();
       })
       .catch(() => {})
       .finally(() => endRequest());
   }
 
-  updateAndReload();
+//   // Заглушки для startRequest и endRequest, если их нет
+//   function startRequest() { /* тут твоя логика */ }
+//   function endRequest() { /* тут твоя логика */ }
+
+  // Заглушки для createGeoJSON и addOrUpdateLayer, если их нет
+  function createGeoJSON(points) {
+    return {
+      type: 'FeatureCollection',
+      features: points.map(point => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [point.longitude, point.latitude] },
+        properties: { density: point.density, color: getColorByDensity(point.density) }
+      }))
+    };
+  }
+  function addOrUpdateLayer(id, data, paintProps) {
+    if (map.getSource(id)) {
+      map.getSource(id).setData(data);
+    } else {
+      map.addSource(id, { type: 'geojson', data: data });
+      map.addLayer({ id, type: 'circle', source: id, paint: paintProps });
+    }
+  }
 </script>
 </body>
 </html>
