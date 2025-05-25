@@ -1,424 +1,702 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8" />
-    <title>Ice Density Visualization — Стильная панель управления</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet"/>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
-        #map { width: 100%; height: 100%; position: relative; }
-        #date-picker-container {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 15;
-            background: rgba(0,0,0,0.7);
-            padding: 10px 12px;
-            border-radius: 6px;
-            color: white;
-            display: flex;
-            align-items: center;
-        }
-        #date-input {
-            padding: 6px 8px;
-            border-radius: 4px;
-            border: none;
-            font-size: 14px;
-            cursor: pointer;
-            width: 120px;
-            text-align: center;
-            margin: 0 8px;
-        }
-        #prev-week, #next-week {
-            font-size: 18px;
-            cursor: pointer;
-            background: none;
-            border: none;
-            color: white;
-            user-select: none;
-        }
-        #prev-week:hover, #next-week:hover { color: #ffd966; }
-        #loading-spinner {
-            margin-left: 10px;
-            position: relative;
-            width: 18px;
-            height: 18px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            display: none;
-        }
-        #spinner-count {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 11px;
-            font-weight: bold;
-            color: white;
-            user-select: none;
-            pointer-events: none;
-            font-family: Arial, sans-serif;
-            line-height: 1;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        /* Современная панель справа */
-        #control-panel {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            z-index: 25;
-            background: rgba(0,0,0,0.88);
-            padding: 18px 16px 14px 16px;
-            border-radius: 14px;
-            color: white;
-            min-width: 230px;
-            box-shadow: 0 4px 20px 0 #000c;
-            user-select: none;
-        }
-        .control-panel-header {
-            font-size: 15px;
-            font-weight: 600;
-            margin-bottom: 14px;
-            text-align: center;
-            letter-spacing: 0.5px;
-        }
-        .control-panel-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 13px;
-            gap: 12px;
-        }
-        .control-panel-row:last-child { margin-bottom: 0; }
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 42px;
-            height: 24px;
-            margin-left: 10px;
-        }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #7a7a7a;
-            transition: 0.4s;
-            border-radius: 24px;
-        }
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 18px; width: 18px;
-            left: 3px; top: 50%;
-            transform: translateY(-50%);
-            background: #fff;
-            border-radius: 50%;
-            transition: 0.4s;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.22);
-        }
-        input:checked + .slider { background: #36b37e; }
-        input:checked + .slider:before { transform: translate(18px, -50%); }
-        .styled-select {
-            flex: 1 1 80px;
-            padding: 5px 10px;
-            font-size: 14px;
-            background: #232a34;
-            color: #eaeaea;
-            border: 1.3px solid #444d5a;
-            border-radius: 7px;
-            outline: none;
-            min-width: 90px;
-            max-width: 160px;
-            margin-left: 10px;
-            transition: border 0.2s;
-        }
-        .styled-select:focus { border: 1.6px solid #36b37e; }
-        #legend {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 300px;
-            height: 20px;
-            border-radius: 10px;
-            background: linear-gradient(to right, #FFFFFF,#87CEFA,#0000FF,#00008B );
-            box-shadow: 0 0 10px rgba(0,0,0,0.7);
-            z-index: 15;
-        }
-        #legend-labels {
-            position: absolute;
-            bottom: 45px;
-            left: 50%;
-            width: 300px;
-            transform: translateX(-50%);
-            display: flex;
-            justify-content: space-between;
-            color: white;
-            font-size: 12px;
-            text-shadow: 0 0 3px black;
-            user-select: none;
-            z-index: 15;
-            font-weight: bold;
-        }
-        .mapboxgl-popup-content {
-            background: rgba(30, 30, 30, 0.85);
-            color: #f0f0f0;
-            font-size: 14px;
-            border-radius: 8px;
-            padding: 10px 14px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.7);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        .mapboxgl-popup-tip {
-            border-top-color: rgba(30, 30, 30, 0.85);
-        }
-    </style>
+<meta charset="utf-8" />
+<title>Ice Density Visualization — Подсветка с тройным переключателем (исправленный)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<style>
+  body, html { margin:0; padding:0; height:100%; font-family: Arial, sans-serif; }
+  #map { width: 100%; height: 100%; position: relative; }
+
+  #date-picker-container {
+      position: absolute;
+      top: 10px; left: 10px;
+      z-index: 15;
+      background: rgba(0,0,0,0.7);
+      padding: 10px 12px;
+      border-radius: 6px;
+      color: white;
+      display: flex;
+      align-items: center;
+  }
+  #date-input {
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+      width: 120px;
+      text-align: center;
+      margin: 0 8px;
+  }
+  #prev-week, #next-week {
+      font-size: 18px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      color: white;
+      user-select: none;
+  }
+  #prev-week:hover, #next-week:hover { color: #ffd966; }
+  #loading-spinner {
+      margin-left: 10px;
+      position: relative;
+      width: 18px; height: 18px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      display: none;
+  }
+  #spinner-count {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 11px;
+      font-weight: bold;
+      color: white;
+      user-select: none;
+      pointer-events: none;
+      font-family: Arial, sans-serif;
+      line-height: 1;
+  }
+  @keyframes spin {
+      to { transform: rotate(360deg); }
+  }
+
+  /* Панель управления */
+  #control-panel {
+      position: absolute;
+      top: 10px; right: 10px;
+      z-index: 25;
+      background: rgba(0,0,0,0.88);
+      padding: 18px 16px 14px 16px;
+      border-radius: 14px;
+      color: white;
+      min-width: 250px;
+      box-shadow: 0 4px 20px 0 #000c;
+      user-select: none;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  .control-panel-header {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      text-align: center;
+      letter-spacing: 0.5px;
+  }
+  .control-panel-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 13px;
+      gap: 12px;
+  }
+  .control-panel-row:last-child { margin-bottom: 0; }
+  .switch {
+      position: relative;
+      display: inline-block;
+      width: 42px;
+      height: 24px;
+      margin-left: 10px;
+  }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #7a7a7a;
+      transition: 0.4s;
+      border-radius: 24px;
+  }
+  .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px; width: 18px;
+      left: 3px; top: 50%;
+      transform: translateY(-50%);
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.4s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.22);
+  }
+  input:checked + .slider { background: #36b37e; }
+  input:checked + .slider:before { transform: translate(18px, -50%); }
+  .styled-select {
+      flex: 1 1 80px;
+      padding: 5px 10px;
+      font-size: 14px;
+      background: #232a34;
+      color: #eaeaea;
+      border: 1.3px solid #444d5a;
+      border-radius: 7px;
+      outline: none;
+      min-width: 90px;
+      max-width: 160px;
+      margin-left: 10px;
+      transition: border 0.2s;
+  }
+  .styled-select:focus { border: 1.6px solid #36b37e; }
+
+  #combined-methods-list .method-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(255 255 255 / 0.05);
+    user-select: none;
+    font-size: 14px;
+    color: #eee;
+    margin-bottom: 6px;
+  }
+  #combined-methods-list .method-row label {
+    flex-grow: 1;
+    cursor: pointer;
+    user-select: none;
+  }
+  #combined-methods-list .method-row input[type="number"] {
+    width: 60px;
+    padding: 4px 6px;
+    font-size: 13px;
+    border-radius: 6px;
+    border: none;
+    background: #2a3240;
+    color: white;
+    text-align: right;
+    transition: background-color 0.2s;
+    outline-offset: 2px;
+    outline-color: transparent;
+    outline-style: solid;
+    outline-width: 2px;
+  }
+  #combined-methods-list .method-row input[type="number"]:focus {
+    outline-color: #36b37e;
+    background: #22332e;
+  }
+  #combined-methods-list .method-row input[type="number"]:disabled {
+    background: #444d5a;
+    cursor: not-allowed;
+  }
+
+  #legend {
+      position: absolute;
+      bottom: 20px; left: 50%;
+      transform: translateX(-50%);
+      width: 300px; height: 20px;
+      border-radius: 10px;
+      background: linear-gradient(to right, #FFFFFF,#87CEFA,#0000FF,#00008B);
+      box-shadow: 0 0 10px rgba(0,0,0,0.7);
+      z-index: 15;
+  }
+  #legend-labels {
+      position: absolute;
+      bottom: 45px; left: 50%;
+      width: 300px;
+      transform: translateX(-50%);
+      display: flex;
+      justify-content: space-between;
+      color: white;
+      font-size: 12px;
+      text-shadow: 0 0 3px black;
+      user-select: none;
+      z-index: 15;
+      font-weight: bold;
+  }
+  .mapboxgl-popup-content {
+      background: rgba(30, 30, 30, 0.85);
+      color: #f0f0f0;
+      font-size: 14px;
+      border-radius: 8px;
+      padding: 10px 14px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.7);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  .mapboxgl-popup-tip {
+      border-top-color: rgba(30, 30, 30, 0.85);
+  }
+
+  /* Тройной переключатель */
+  .triple-toggle {
+    position: relative;
+    width: 160px;
+    height: 32px;
+    background: #444d5a;
+    border-radius: 16px;
+    display: flex;
+    box-shadow: inset 0 0 8px rgb(0 0 0 / 0.7);
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    font-weight: 600;
+    color: #bbb;
+    align-items: center;
+    overflow: hidden;
+  }
+  .triple-toggle__indicator {
+    position: absolute;
+    top: 2px; bottom: 2px;
+    width: calc(100% / 3);
+    background: #36b37e;
+    border-radius: 16px;
+    transition: left 0.3s;
+    left: 0;
+    z-index: 1;
+  }
+  .triple-toggle input {
+    display: none;
+  }
+  .triple-toggle label {
+    flex: 1;
+    text-align: center;
+    line-height: 32px;
+    position: relative;
+    z-index: 2;
+    user-select: none;
+    cursor: pointer;
+    transition: color 0.3s;
+    margin: 0;
+  }
+  .triple-toggle label[for="highlight-none"]::after { content: "Нет"; }
+  .triple-toggle label[for="highlight-color"]::after { content: "Цвет"; }
+  .triple-toggle label[for="highlight-size"]::after { content: "Размер"; }
+  .triple-toggle input:checked + label {
+    color: white;
+  }
+</style>
 </head>
 <body>
+
 <div id="date-picker-container">
-    <button id="prev-week" title="Назад на неделю">←</button>
-    <input type="text" id="date-input" readonly />
-    <button id="next-week" title="Вперед на неделю">→</button>
-    <div id="loading-spinner">
-        <span id="spinner-count"></span>
-    </div>
+  <button id="prev-week" title="Назад на неделю">←</button>
+  <input type="text" id="date-input" readonly />
+  <button id="next-week" title="Вперед на неделю">→</button>
+  <div id="loading-spinner"><span id="spinner-count"></span></div>
 </div>
 
 <div id="control-panel">
-    <div class="control-panel-header">Интерполяция</div>
+  <div class="control-panel-header">Интерполяция</div>
+
+  <div class="control-panel-row">
+    <span>Включить интерполяцию</span>
+    <label class="switch">
+      <input type="checkbox" id="interp-enable-switch" checked />
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <div class="control-panel-row" id="mode-row">
+    <span>Режим</span>
+    <select id="mode-select" class="styled-select">
+      <option value="single" selected>Одиночный</option>
+      <option value="combined">Комбинированный</option>
+    </select>
+  </div>
+
+  <div id="single-method-row" class="control-panel-row">
+    <span>Метод</span>
+    <select id="method-select" class="styled-select">
+      <option value="temporal">Временной</option>
+      <option value="spatial">Пространственный</option>
+      <option value="kriging">Кригинг</option>
+      <option value="delaunay">Делоне</option>
+    </select>
+  </div>
+
+  <div id="combined-methods-block" style="display:none; flex-direction: column; gap: 10px;">
     <div class="control-panel-row">
-        <span>Включить интерполяцию</span>
-        <label class="switch">
-            <input type="checkbox" id="interp-enable-switch" checked>
-            <span class="slider"></span>
-        </label>
+      <span>Автовеса</span>
+      <label class="switch">
+        <input type="checkbox" id="auto-weights-switch" />
+        <span class="slider"></span>
+      </label>
     </div>
-    <div class="control-panel-row" id="interp-method-row">
-        <span>Метод</span>
-        <select id="method-select" class="styled-select">
-            <option value="temporal" selected>Временной</option>
-            <option value="spatial">Пространственный</option>
-            <option value="kriging">Кригинг</option>
-            <option value="delaunay">Делоне</option>
-        </select>
+    <div id="combined-methods-list"></div>
+  </div>
+
+  <div class="control-panel-row" id="highlight-mode-row">
+    <label for="highlight-mode" style="flex-grow:1; user-select:none;">Подсветка</label>
+    <div id="highlight-mode" class="triple-toggle">
+      <div class="triple-toggle__indicator"></div>
+      <input type="radio" id="highlight-none" name="highlight" value="none" checked>
+      <label for="highlight-none" title="Нет"></label>
+      <input type="radio" id="highlight-color" name="highlight" value="color">
+      <label for="highlight-color" title="Цвет"></label>
+      <input type="radio" id="highlight-size" name="highlight" value="size">
+      <label for="highlight-size" title="Размер"></label>
     </div>
-    <div class="control-panel-row">
-        <span>Подсветка</span>
-        <label class="switch">
-            <input type="checkbox" id="stroke-toggle" checked>
-            <span class="slider"></span>
-        </label>
-    </div>
+  </div>
 </div>
 
 <div id="map"></div>
 
 <div id="legend"></div>
 <div id="legend-labels">
-    <span>0</span>
-    <span>5</span>
-    <span>10</span>
-    <span>15</span>
-    <span>20</span>
-    <span>22</span>
+  <span>0</span><span>5</span><span>10</span><span>15</span><span>20</span><span>22</span>
 </div>
 
 <script>
-mapboxgl.accessToken = '{{ mapbox_token }}';
-const map = new mapboxgl.Map({
+  const ALL_METHODS = [
+    { id: 'temporal', label: 'Временной' },
+    { id: 'spatial', label: 'Пространственный' },
+    { id: 'kriging', label: 'Кригинг' },
+    { id: 'delaunay', label: 'Делоне' }
+  ];
+
+  const state = {
+    interpolationEnabled: true,
+    mode: 'single',
+    singleMethod: 'temporal',
+    combinedMethods: {},
+    weights: {},
+    autoWeights: false,
+    highlightMode: 'none'
+  };
+
+  ALL_METHODS.forEach(m => {
+    state.combinedMethods[m.id] = true;
+    state.weights[m.id] = 1.0;
+  });
+
+  const interpEnableSwitch = document.getElementById('interp-enable-switch');
+  const modeSelect = document.getElementById('mode-select');
+  const singleMethodSelect = document.getElementById('method-select');
+  const combinedMethodsBlock = document.getElementById('combined-methods-block');
+  const combinedMethodsList = document.getElementById('combined-methods-list');
+  const autoWeightsSwitch = document.getElementById('auto-weights-switch');
+  const highlightModeRadios = document.querySelectorAll('input[name="highlight"]');
+  const highlightModeRow = document.getElementById('highlight-mode-row');
+  const highlightModeIndicator = document.querySelector('.triple-toggle__indicator');
+
+  mapboxgl.accessToken = '{{ mapbox_token }}';
+  const map = new mapboxgl.Map({
     container: 'map',
     style: 'mapbox://styles/mapbox/dark-v11',
     center: [0, 80],
     zoom: 2
-});
-const spinner = document.getElementById('loading-spinner');
-const spinnerCount = document.getElementById('spinner-count');
-let activeRequests = 0;
-function showSpinner() {
+  });
+
+  const spinner = document.getElementById('loading-spinner');
+  const spinnerCount = document.getElementById('spinner-count');
+  let activeRequests = 0;
+
+  function showSpinner() {
     spinner.style.display = 'inline-block';
     spinnerCount.textContent = (activeRequests > 1) ? activeRequests : '';
-}
-function hideSpinner() { spinner.style.display = 'none'; spinnerCount.textContent = ''; }
-function startRequest() { activeRequests++; showSpinner(); }
-function endRequest() {
+  }
+  function hideSpinner() {
+    spinner.style.display = 'none';
+    spinnerCount.textContent = '';
+  }
+  function startRequest() {
+    activeRequests++;
+    showSpinner();
+  }
+  function endRequest() {
     activeRequests--;
-    if (activeRequests <= 0) { activeRequests = 0; hideSpinner(); }
-    else { spinnerCount.textContent = activeRequests > 1 ? activeRequests : ''; }
-}
-function getColorByDensity(d) {
+    if (activeRequests <= 0) {
+      activeRequests = 0;
+      hideSpinner();
+    } else {
+      spinnerCount.textContent = activeRequests > 1 ? activeRequests : '';
+    }
+  }
+
+  function getColorByDensity(d) {
     const maxDensity = 22;
     let ratio = 1 - Math.min(d, maxDensity) / maxDensity;
     const stops = [
-        {stop: 0.00, color: [0, 0, 139]},
-        {stop: 0.33, color: [0, 0, 255]},
-        {stop: 0.66, color: [135, 206, 250]},
-        {stop: 1.00, color: [255, 255, 255]}
+      { stop: 0.00, color: [0, 0, 139] },
+      { stop: 0.33, color: [0, 0, 255] },
+      { stop: 0.66, color: [135, 206, 250] },
+      { stop: 1.00, color: [255, 255, 255] }
     ];
     for (let i = 0; i < stops.length - 1; i++) {
-        if (ratio >= stops[i].stop && ratio <= stops[i + 1].stop) {
-            let t = (ratio - stops[i].stop) / (stops[i + 1].stop - stops[i].stop);
-            let r = Math.round(stops[i].color[0] + t * (stops[i + 1].color[0] - stops[i].color[0]));
-            let g = Math.round(stops[i].color[1] + t * (stops[i + 1].color[1] - stops[i].color[1]));
-            let b = Math.round(stops[i].color[2] + t * (stops[i + 1].color[2] - stops[i].color[2]));
-            return `rgb(${r},${g},${b})`;
-        }
+      if (ratio >= stops[i].stop && ratio <= stops[i + 1].stop) {
+        let t = (ratio - stops[i].stop) / (stops[i + 1].stop - stops[i].stop);
+        let r = Math.round(stops[i].color[0] + t * (stops[i + 1].color[0] - stops[i].color[0]));
+        let g = Math.round(stops[i].color[1] + t * (stops[i + 1].color[1] - stops[i].color[1]));
+        let b = Math.round(stops[i].color[2] + t * (stops[i + 1].color[2] - stops[i].color[2]));
+        return `rgb(${r},${g},${b})`;
+      }
     }
     return 'rgb(255,255,255)';
-}
-let popupReal = null;
-let popupInterp = null;
-function createGeoJSON(points) {
+  }
+
+  function createGeoJSON(points) {
     return {
-        type: 'FeatureCollection',
-        features: points.map(point => ({
-            type: 'Feature',
-            geometry: {
-                type: 'Point',
-                coordinates: [point.longitude, point.latitude]
-            },
-            properties: {
-                density: point.density,
-                color: getColorByDensity(point.density)
-            }
-        }))
+      type: 'FeatureCollection',
+      features: points.map(point => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [point.longitude, point.latitude] },
+        properties: { density: point.density, color: getColorByDensity(point.density) }
+      }))
     };
-}
-function addOrUpdateLayer(id, data, paintProps) {
-    if (map.getSource(id)) { map.getSource(id).setData(data); }
-    else {
-        map.addSource(id, { type: 'geojson', data: data });
-        map.addLayer({ id: id, type: 'circle', source: id, paint: paintProps });
+  }
+
+  function addOrUpdateLayer(id, data, paintProps) {
+    if (map.getSource(id)) {
+      map.getSource(id).setData(data);
+    } else {
+      map.addSource(id, { type: 'geojson', data: data });
+      map.addLayer({ id, type: 'circle', source: id, paint: paintProps });
     }
-}
-function setupPopups() {
+  }
+
+  let popupReal = null;
+  let popupInterp = null;
+  function setupPopups() {
     popupReal = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
-    map.on('mouseenter', 'real-points-layer', (e) => {
-        map.getCanvas().style.cursor = 'pointer';
-        const coords = e.features[0].geometry.coordinates.slice();
-        const density = parseFloat(e.features[0].properties.density).toFixed(2);
-        const lon = coords[0].toFixed(4);
-        const lat = coords[1].toFixed(4);
-        popupReal.setLngLat(coords).setHTML(
-            `<div>
-                <div><strong>Real Data</strong></div>
-                <div><strong>Density:</strong> ${density}</div>
-                <div><strong>Longitude:</strong> ${lon}</div>
-                <div><strong>Latitude:</strong> ${lat}</div>
-            </div>`
-        ).addTo(map);
+    map.on('mouseenter', 'real-points-layer', e => {
+      map.getCanvas().style.cursor = 'pointer';
+      const coords = e.features[0].geometry.coordinates.slice();
+      const density = parseFloat(e.features[0].properties.density).toFixed(2);
+      const lon = coords[0].toFixed(4);
+      const lat = coords[1].toFixed(4);
+      popupReal.setLngLat(coords).setHTML(
+        `<div>
+          <div><strong>Real Data</strong></div>
+          <div><strong>Density:</strong> ${density}</div>
+          <div><strong>Longitude:</strong> ${lon}</div>
+          <div><strong>Latitude:</strong> ${lat}</div>
+        </div>`
+      ).addTo(map);
     });
     map.on('mouseleave', 'real-points-layer', () => {
-        map.getCanvas().style.cursor = '';
-        popupReal.remove();
+      map.getCanvas().style.cursor = '';
+      popupReal.remove();
     });
+
     popupInterp = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'interp-popup' });
-    map.on('mouseenter', 'interp-points-layer', (e) => {
-        map.getCanvas().style.cursor = 'pointer';
-        const coords = e.features[0].geometry.coordinates.slice();
-        const density = parseFloat(e.features[0].properties.density).toFixed(2);
-        const lon = coords[0].toFixed(4);
-        const lat = coords[1].toFixed(4);
-        popupInterp.setLngLat(coords).setHTML(
-            `<div>
-                <div><strong>Interpolated Data</strong></div>
-                <div><strong>Density:</strong> ${density}</div>
-                <div><strong>Longitude:</strong> ${lon}</div>
-                <div><strong>Latitude:</strong> ${lat}</div>
-            </div>`
-        ).addTo(map);
+    map.on('mouseenter', 'interp-points-layer', e => {
+      map.getCanvas().style.cursor = 'pointer';
+      const coords = e.features[0].geometry.coordinates.slice();
+      const density = parseFloat(e.features[0].properties.density).toFixed(2);
+      const lon = coords[0].toFixed(4);
+      const lat = coords[1].toFixed(4);
+      popupInterp.setLngLat(coords).setHTML(
+        `<div>
+          <div><strong>Interpolated Data</strong></div>
+          <div><strong>Density:</strong> ${density}</div>
+          <div><strong>Longitude:</strong> ${lon}</div>
+          <div><strong>Latitude:</strong> ${lat}</div>
+        </div>`
+      ).addTo(map);
     });
     map.on('mouseleave', 'interp-points-layer', () => {
-        map.getCanvas().style.cursor = '';
-        popupInterp.remove();
+      map.getCanvas().style.cursor = '';
+      popupInterp.remove();
     });
-}
-function styleInterpPointsLayer(isStrokeOn) {
+  }
+
+  function styleInterpPointsLayerByMode(mode) {
     if (!map.getLayer('interp-points-layer')) return;
-    map.setPaintProperty('interp-points-layer', 'circle-stroke-color', isStrokeOn ? 'red' : 'transparent');
-    map.setPaintProperty('interp-points-layer', 'circle-stroke-width', isStrokeOn ? 2 : 0);
-    map.setPaintProperty('interp-points-layer', 'circle-radius', isStrokeOn ? 6 : 4);
-    map.setPaintProperty('interp-points-layer', 'circle-opacity', isStrokeOn ? 0.9 : 0.5);
-}
-function loadDataForDate(dateStr, method, interpolationEnabled) {
-    startRequest();
-    fetch(`/data?date=${dateStr}&method=${interpolationEnabled ? method : 'none'}`)
-        .then(response => response.json())
-        .then(({real_points, interp_points}) => {
-            const realData = createGeoJSON(real_points);
-            addOrUpdateLayer('real-points-layer', realData, {
-                'circle-radius': 6,
-                'circle-color': ['get', 'color'],
-                'circle-opacity': 0.9,
-                'circle-stroke-color': '#000',
-                'circle-stroke-width': 1
-            });
-            if (interpolationEnabled) {
-                const interpData = createGeoJSON(interp_points);
-                const strokeToggle = document.getElementById('stroke-toggle');
-                addOrUpdateLayer('interp-points-layer', interpData, {
-                    'circle-radius': strokeToggle.checked ? 6 : 4,
-                    'circle-color': ['get', 'color'],
-                    'circle-opacity': strokeToggle.checked ? 0.9 : 0.5,
-                    'circle-stroke-color': strokeToggle.checked ? 'red' : 'transparent',
-                    'circle-stroke-width': strokeToggle.checked ? 2 : 0,
-                    'circle-blur': 0.5
-                });
-                styleInterpPointsLayer(strokeToggle.checked);
-            } else {
-                if (map.getLayer('interp-points-layer')) map.removeLayer('interp-points-layer');
-                if (map.getSource('interp-points-layer')) map.removeSource('interp-points-layer');
-            }
-            if (!popupReal && !popupInterp) { setupPopups(); }
-        })
-        .catch(() => {})
-        .finally(() => { endRequest(); });
-}
-map.on('load', () => {
-    const dateInput = document.getElementById('date-input');
-    const prevWeekBtn = document.getElementById('prev-week');
-    const nextWeekBtn = document.getElementById('next-week');
-    const strokeToggle = document.getElementById('stroke-toggle');
-    const methodSelect = document.getElementById('method-select');
-    const interpEnableSwitch = document.getElementById('interp-enable-switch');
-    const interpMethodRow = document.getElementById('interp-method-row');
-    const fp = flatpickr(dateInput, {
-        dateFormat: "Y-m-d",
-        defaultDate: "2019-01-08",
-        maxDate: new Date().fp_incr(0),
-        onChange: function(selectedDates, dateStr) {
-            if (dateStr) loadDataForDate(dateStr, methodSelect.value, interpEnableSwitch.checked);
-        }
-    });
-    function shiftDate(days) {
-        const currentDate = fp.selectedDates[0] || new Date();
-        const newDate = new Date(currentDate);
-        newDate.setDate(currentDate.getDate() + days);
-        if (newDate > new Date()) return;
-        fp.setDate(newDate, true);
+    switch(mode) {
+      case 'none':
+        map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'transparent');
+        map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 1);
+        map.setPaintProperty('interp-points-layer', 'circle-radius', 5);
+        map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.9);
+        map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
+        break;
+      case 'color':
+        map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'red');
+        map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 2);
+        map.setPaintProperty('interp-points-layer', 'circle-radius', 6);
+        map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.9);
+        map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
+        break;
+      case 'size':
+        map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'transparent');
+        map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 1);
+        map.setPaintProperty('interp-points-layer', 'circle-radius', 4);
+        map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.5);
+        map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
+        break;
     }
-    prevWeekBtn.addEventListener('click', () => shiftDate(-7));
-    nextWeekBtn.addEventListener('click', () => shiftDate(7));
-    strokeToggle.addEventListener('change', function() {
-        styleInterpPointsLayer(this.checked);
+  }
+
+  function moveHighlightIndicator() {
+    const ind = highlightModeIndicator;
+    const val = document.querySelector('input[name="highlight"]:checked').value;
+    if (val === 'none') ind.style.left = '0';
+    else if (val === 'color') ind.style.left = 'calc(100% / 3)';
+    else if (val === 'size') ind.style.left = 'calc(2 * 100% / 3)';
+  }
+
+  function renderCombinedMethodsList() {
+    combinedMethodsList.innerHTML = '';
+    ALL_METHODS.forEach(m => {
+      const row = document.createElement('div');
+      row.className = 'method-row';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = `chk-${m.id}`;
+      checkbox.checked = !!state.combinedMethods[m.id];
+      checkbox.disabled = state.autoWeights;
+
+      const label = document.createElement('label');
+      label.htmlFor = checkbox.id;
+      label.textContent = m.label;
+
+      const weightInput = document.createElement('input');
+      weightInput.type = 'number';
+      weightInput.min = '0';
+      weightInput.step = '0.01';
+      weightInput.value = state.weights[m.id].toFixed(2);
+      weightInput.disabled = state.autoWeights || !checkbox.checked;
+
+      checkbox.addEventListener('change', () => {
+        state.combinedMethods[m.id] = checkbox.checked;
+        weightInput.disabled = state.autoWeights || !checkbox.checked;
+        updateAndReload();
+      });
+      weightInput.addEventListener('input', () => {
+        let val = parseFloat(weightInput.value);
+        if (isNaN(val) || val < 0) val = 0;
+        state.weights[m.id] = val;
+        updateAndReload();
+      });
+
+      row.appendChild(checkbox);
+      row.appendChild(label);
+      row.appendChild(weightInput);
+
+      combinedMethodsList.appendChild(row);
     });
-    interpEnableSwitch.addEventListener('change', () => {
-        interpMethodRow.style.display = interpEnableSwitch.checked ? 'flex' : 'none';
-        loadDataForDate(dateInput.value, methodSelect.value, interpEnableSwitch.checked);
+  }
+
+  function updateControlPanelVisibility() {
+    if (state.interpolationEnabled) {
+      modeSelect.parentElement.style.display = 'flex';
+      highlightModeRow.style.display = 'flex';
+    } else {
+      modeSelect.parentElement.style.display = 'none';
+      highlightModeRow.style.display = 'none';
+    }
+    combinedMethodsBlock.style.display = (state.mode === 'combined' && state.interpolationEnabled) ? 'flex' : 'none';
+    singleMethodSelect.parentElement.style.display = (state.mode === 'single' && state.interpolationEnabled) ? 'flex' : 'none';
+  }
+
+  function getApiParams() {
+    if (!state.interpolationEnabled) return 'method=none';
+    if (state.mode === 'single') return 'method=' + encodeURIComponent(state.singleMethod);
+
+    const weightsObj = {};
+    Object.entries(state.weights).forEach(([k, v]) => {
+      if (state.combinedMethods[k]) weightsObj[k] = parseFloat(v) || 0;
     });
-    methodSelect.addEventListener('change', () => {
-        loadDataForDate(dateInput.value, methodSelect.value, interpEnableSwitch.checked);
+    return 'method=combined'
+      + '&weights=' + encodeURIComponent(JSON.stringify(weightsObj))
+      + '&auto_weights=' + (state.autoWeights ? 'true' : 'false');
+  }
+
+  function updateAndReload() {
+    updateControlPanelVisibility();
+    moveHighlightIndicator();
+    const dateStr = document.getElementById('date-input').value;
+    const params = getApiParams();
+    if (!dateStr) return;
+    loadDataForDate(dateStr, params.split('method=')[1].split('&')[0], state.interpolationEnabled);
+    styleInterpPointsLayerByMode(state.highlightMode);
+  }
+
+  interpEnableSwitch.addEventListener('change', () => {
+    state.interpolationEnabled = interpEnableSwitch.checked;
+    updateControlPanelVisibility();
+    updateAndReload();
+  });
+  modeSelect.addEventListener('change', () => {
+    state.mode = modeSelect.value;
+    updateControlPanelVisibility();
+    updateAndReload();
+  });
+  singleMethodSelect.addEventListener('change', () => {
+    state.singleMethod = singleMethodSelect.value;
+    updateAndReload();
+  });
+  autoWeightsSwitch.addEventListener('change', () => {
+    state.autoWeights = autoWeightsSwitch.checked;
+    renderCombinedMethodsList();
+    updateAndReload();
+  });
+  highlightModeRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      if (radio.checked) {
+        state.highlightMode = radio.value;
+        styleInterpPointsLayerByMode(state.highlightMode);
+        moveHighlightIndicator();
+      }
     });
-    loadDataForDate("2019-01-08", methodSelect.value, interpEnableSwitch.checked);
-});
+  });
+
+  renderCombinedMethodsList();
+  updateControlPanelVisibility();
+  moveHighlightIndicator();
+
+  const fp = flatpickr(document.getElementById('date-input'), {
+    dateFormat: "Y-m-d",
+    defaultDate: "2019-01-08",
+    maxDate: new Date().fp_incr(0),
+    onChange: function(selectedDates, dateStr) {
+      if (dateStr) updateAndReload();
+    }
+  });
+  document.getElementById('prev-week').addEventListener('click', () => {
+    const d = fp.selectedDates[0] || new Date();
+    d.setDate(d.getDate() - 7);
+    if (d <= new Date()) fp.setDate(d, true);
+  });
+  document.getElementById('next-week').addEventListener('click', () => {
+    const d = fp.selectedDates[0] || new Date();
+    d.setDate(d.getDate() + 7);
+    if (d <= new Date()) fp.setDate(d, true);
+  });
+
+  function loadDataForDate(dateStr, method, interpolationEnabled) {
+    startRequest();
+    fetch(`/data?date=${dateStr}&method=${interpolationEnabled ? method : 'none'}` +
+          (method === 'combined' ? `&weights=${encodeURIComponent(JSON.stringify(state.weights))}&auto_weights=${state.autoWeights}` : ''))
+      .then(res => res.json())
+      .then(({real_points, interp_points}) => {
+        const realData = createGeoJSON(real_points);
+        addOrUpdateLayer('real-points-layer', realData, {
+          'circle-radius': 5,
+          'circle-color': ['get', 'color'],
+          'circle-opacity': 0.9,
+          'circle-stroke-color': 'transparent',
+          'circle-stroke-width': 1,
+          'circle-blur': 0
+        });
+
+        if (interpolationEnabled && method !== 'none') {
+          const interpData = createGeoJSON(interp_points);
+          addOrUpdateLayer('interp-points-layer', interpData, {
+            'circle-radius': 5, // дефолтный, чтобы при любом режиме начать с того же
+            'circle-color': ['get', 'color'],
+            'circle-opacity': 0.9,
+            'circle-stroke-color': 'transparent',
+            'circle-stroke-width': 1,
+            'circle-blur': 0
+          });
+          styleInterpPointsLayerByMode(state.highlightMode);
+        } else {
+          if (map.getLayer('interp-points-layer')) map.removeLayer('interp-points-layer');
+          if (map.getSource('interp-points-layer')) map.removeSource('interp-points-layer');
+        }
+        if (!popupReal && !popupInterp) setupPopups();
+      })
+      .catch(() => {})
+      .finally(() => endRequest());
+  }
+
+  updateAndReload();
 </script>
 </body>
 </html>
