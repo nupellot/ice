@@ -2,10 +2,10 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<title>Ice Density Visualization — Подсветка с тройным переключателем (исправленный)</title>
+<title>Ice Density Visualization — Подсветка с тройным переключателем (исправленный v2)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-<link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+<link href="https://api.mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
 <link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <style>
@@ -68,7 +68,6 @@
       to { transform: rotate(360deg); }
   }
 
-  /* Панель управления */
   #control-panel {
       position: absolute;
       top: 10px; right: 10px;
@@ -224,10 +223,10 @@
   /* Тройной переключатель */
   .triple-toggle {
     position: relative;
-    width: 160px;
-    height: 32px;
+    width: 176px;
+    height: 34px;
     background: #444d5a;
-    border-radius: 16px;
+    border-radius: 17px;
     display: flex;
     box-shadow: inset 0 0 8px rgb(0 0 0 / 0.7);
     cursor: pointer;
@@ -237,13 +236,15 @@
     color: #bbb;
     align-items: center;
     overflow: hidden;
+    margin-left: 0; /* убираем доп. отступы */
+    margin-right: 0;
   }
   .triple-toggle__indicator {
     position: absolute;
     top: 2px; bottom: 2px;
     width: calc(100% / 3);
     background: #36b37e;
-    border-radius: 16px;
+    border-radius: 17px;
     transition: left 0.3s;
     left: 0;
     z-index: 1;
@@ -252,21 +253,31 @@
     display: none;
   }
   .triple-toggle label {
-    flex: 1;
+    flex: 1 1 0;
     text-align: center;
-    line-height: 32px;
+    line-height: 30px;
     position: relative;
     z-index: 2;
     user-select: none;
     cursor: pointer;
     transition: color 0.3s;
     margin: 0;
+    padding: 0 8px;
+    font-size: 14px;
   }
   .triple-toggle label[for="highlight-none"]::after { content: "Нет"; }
-  .triple-toggle label[for="highlight-color"]::after { content: "Цвет"; }
   .triple-toggle label[for="highlight-size"]::after { content: "Размер"; }
+  .triple-toggle label[for="highlight-color"]::after { content: "Цвет"; }
   .triple-toggle input:checked + label {
     color: white;
+  }
+  /* Центрируем переключатель относительно подписи */
+  #highlight-mode-row {
+    align-items: center;
+  }
+  #highlight-mode {
+    margin-top: 0;
+    margin-bottom: 0;
   }
 </style>
 </head>
@@ -319,16 +330,16 @@
     <div id="combined-methods-list"></div>
   </div>
 
-  <div class="control-panel-row" id="highlight-mode-row">
+  <div class="control-panel-row" id="highlight-mode-row" style="align-items: center;">
     <label for="highlight-mode" style="flex-grow:1; user-select:none;">Подсветка</label>
     <div id="highlight-mode" class="triple-toggle">
       <div class="triple-toggle__indicator"></div>
       <input type="radio" id="highlight-none" name="highlight" value="none" checked>
       <label for="highlight-none" title="Нет"></label>
-      <input type="radio" id="highlight-color" name="highlight" value="color">
-      <label for="highlight-color" title="Цвет"></label>
       <input type="radio" id="highlight-size" name="highlight" value="size">
       <label for="highlight-size" title="Размер"></label>
+      <input type="radio" id="highlight-color" name="highlight" value="color">
+      <label for="highlight-color" title="Цвет"></label>
     </div>
   </div>
 </div>
@@ -504,18 +515,18 @@
         map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.9);
         map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
         break;
-      case 'color':
-        map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'red');
-        map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 2);
-        map.setPaintProperty('interp-points-layer', 'circle-radius', 6);
-        map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.9);
-        map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
-        break;
       case 'size':
         map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'transparent');
         map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 1);
         map.setPaintProperty('interp-points-layer', 'circle-radius', 4);
         map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.5);
+        map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
+        break;
+      case 'color':
+        map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'red');
+        map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 2);
+        map.setPaintProperty('interp-points-layer', 'circle-radius', 6);
+        map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.9);
         map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
         break;
     }
@@ -525,8 +536,8 @@
     const ind = highlightModeIndicator;
     const val = document.querySelector('input[name="highlight"]:checked').value;
     if (val === 'none') ind.style.left = '0';
-    else if (val === 'color') ind.style.left = 'calc(100% / 3)';
-    else if (val === 'size') ind.style.left = 'calc(2 * 100% / 3)';
+    else if (val === 'size') ind.style.left = 'calc(100% / 3)';
+    else if (val === 'color') ind.style.left = 'calc(2 * 100% / 3)';
   }
 
   function renderCombinedMethodsList() {
@@ -678,7 +689,7 @@
         if (interpolationEnabled && method !== 'none') {
           const interpData = createGeoJSON(interp_points);
           addOrUpdateLayer('interp-points-layer', interpData, {
-            'circle-radius': 5, // дефолтный, чтобы при любом режиме начать с того же
+            'circle-radius': 5,
             'circle-color': ['get', 'color'],
             'circle-opacity': 0.9,
             'circle-stroke-color': 'transparent',
