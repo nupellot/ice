@@ -349,335 +349,377 @@
 </div>
 
 <script>
-  const ALL_METHODS = [
-    { id: 'temporal', label: 'Временной' },
-    { id: 'kriging', label: 'Кригинг' },
-    { id: 'delaunay', label: 'Делоне' }
-  ];
-
-  const state = {
-    interpolationEnabled: true,
-    mode: 'single',
-    singleMethod: 'temporal',
-    combinedMethods: {},
-    weights: {},
-    autoWeights: false,
-    highlightMode: 'none'
+function getMethodLabel(id) {
+  const labels = {
+    temporal: 'Временной',
+    kriging: 'Кригинг',
+    delaunay: 'Делоне'
   };
+  return labels[id] || id;
+}
 
-  ALL_METHODS.forEach(m => {
-    state.combinedMethods[m.id] = true;
-    state.weights[m.id] = 1.0;
+const state = {
+  interpolationEnabled: true,
+  mode: 'single',
+  singleMethod: 'temporal',
+  combinedMethods: {},
+  weights: {},
+  autoWeights: false,
+  highlightMode: 'none',
+  methods: {
+    temporal: [],
+    spatial: []
+  }
+};
+
+const interpEnableSwitch = document.getElementById('interp-enable-switch');
+const modeSelect = document.getElementById('mode-select');
+const singleMethodSelect = document.getElementById('method-select');
+const combinedMethodsBlock = document.getElementById('combined-methods-block');
+const combinedMethodsList = document.getElementById('combined-methods-list');
+const autoWeightsSwitch = document.getElementById('auto-weights-switch');
+const highlightModeRadios = document.querySelectorAll('input[name="highlight"]');
+const highlightModeRow = document.getElementById('highlight-mode-row');
+const highlightModeIndicator = document.querySelector('.triple-toggle__indicator');
+
+mapboxgl.accessToken = '{{ mapbox_token }}';
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/dark-v11',
+  center: [0, 80],
+  zoom: 2
+});
+
+const spinner = document.getElementById('loading-spinner');
+const spinnerCount = document.getElementById('spinner-count');
+let activeRequests = 0;
+
+function showSpinner() {
+  spinner.style.display = 'inline-block';
+  spinnerCount.textContent = (activeRequests > 1) ? activeRequests : '';
+}
+function hideSpinner() {
+  spinner.style.display = 'none';
+  spinnerCount.textContent = '';
+}
+function startRequest() {
+  activeRequests++;
+  showSpinner();
+}
+function endRequest() {
+  activeRequests--;
+  if (activeRequests <= 0) {
+    activeRequests = 0;
+    hideSpinner();
+  } else {
+    spinnerCount.textContent = activeRequests > 1 ? activeRequests : '';
+  }
+}
+
+function getColorByDensity(d) {
+  const maxDensity = 22;
+  let ratio = 1 - Math.min(d, maxDensity) / maxDensity;
+  const stops = [
+    { stop: 0.00, color: [0, 0, 139] },
+    { stop: 0.33, color: [0, 0, 255] },
+    { stop: 0.66, color: [135, 206, 250] },
+    { stop: 1.00, color: [255, 255, 255] }
+  ];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (ratio >= stops[i].stop && ratio <= stops[i + 1].stop) {
+      let t = (ratio - stops[i].stop) / (stops[i + 1].stop - stops[i].stop);
+      let r = Math.round(stops[i].color[0] + t * (stops[i + 1].color[0] - stops[i].color[0]));
+      let g = Math.round(stops[i].color[1] + t * (stops[i + 1].color[1] - stops[i].color[1]));
+      let b = Math.round(stops[i].color[2] + t * (stops[i + 1].color[2] - stops[i].color[2]));
+      return `rgb(${r},${g},${b})`;
+    }
+  }
+  return 'rgb(255,255,255)';
+}
+
+function createGeoJSON(points) {
+  return {
+    type: 'FeatureCollection',
+    features: points.map(point => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [point.longitude, point.latitude] },
+      properties: { density: point.density, color: getColorByDensity(point.density) }
+    }))
+  };
+}
+
+function addOrUpdateLayer(id, data, paintProps) {
+  if (map.getSource(id)) {
+    map.getSource(id).setData(data);
+  } else {
+    map.addSource(id, { type: 'geojson', data: data });
+    map.addLayer({ id, type: 'circle', source: id, paint: paintProps });
+  }
+}
+
+let popupReal = null;
+let popupInterp = null;
+
+map.on('load', () => {
+  fetch('/methods')
+    .then(res => res.json())
+    .then(data => {
+      state.methods = data;
+      populateMethodSelectors();
+      renderCombinedMethodsList();
+      updateAndReload();
+    });
+  setupPopups();
+});
+
+function populateMethodSelectors() {
+  const allMethods = [...state.methods.temporal, ...state.methods.spatial];
+  singleMethodSelect.innerHTML = '';
+  allMethods.forEach(id => {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = getMethodLabel(id);
+    singleMethodSelect.appendChild(option);
   });
-
-  const interpEnableSwitch = document.getElementById('interp-enable-switch');
-  const modeSelect = document.getElementById('mode-select');
-  const singleMethodSelect = document.getElementById('method-select');
-  const combinedMethodsBlock = document.getElementById('combined-methods-block');
-  const combinedMethodsList = document.getElementById('combined-methods-list');
-  const autoWeightsSwitch = document.getElementById('auto-weights-switch');
-  const highlightModeRadios = document.querySelectorAll('input[name="highlight"]');
-  const highlightModeRow = document.getElementById('highlight-mode-row');
-  const highlightModeIndicator = document.querySelector('.triple-toggle__indicator');
-
-  mapboxgl.accessToken = '{{ mapbox_token }}';
-  const map = new mapboxgl.Map({
-    container: 'map',
-    style: 'mapbox://styles/mapbox/dark-v11',
-    center: [0, 80],
-    zoom: 2
+  if (!allMethods.includes(state.singleMethod)) {
+    state.singleMethod = allMethods[0];
+  }
+  state.combinedMethods = {};
+  state.weights = {};
+  allMethods.forEach(id => {
+    state.combinedMethods[id] = true;
+    state.weights[id] = 1.0;
   });
+}
 
-  const spinner = document.getElementById('loading-spinner');
-  const spinnerCount = document.getElementById('spinner-count');
-  let activeRequests = 0;
+function renderCombinedMethodsList() {
+  combinedMethodsList.innerHTML = '';
+  const all = [...state.methods.temporal, ...state.methods.spatial];
+  all.forEach(id => {
+    const row = document.createElement('div');
+    row.className = 'method-row';
 
-  function showSpinner() {
-    spinner.style.display = 'inline-block';
-    spinnerCount.textContent = (activeRequests > 1) ? activeRequests : '';
-  }
-  function hideSpinner() {
-    spinner.style.display = 'none';
-    spinnerCount.textContent = '';
-  }
-  function startRequest() {
-    activeRequests++;
-    showSpinner();
-  }
-  function endRequest() {
-    activeRequests--;
-    if (activeRequests <= 0) {
-      activeRequests = 0;
-      hideSpinner();
-    } else {
-      spinnerCount.textContent = activeRequests > 1 ? activeRequests : '';
-    }
-  }
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = `chk-${id}`;
+    checkbox.checked = !!state.combinedMethods[id];
+    checkbox.disabled = state.autoWeights;
 
-  function getColorByDensity(d) {
-    const maxDensity = 22;
-    let ratio = 1 - Math.min(d, maxDensity) / maxDensity;
-    const stops = [
-      { stop: 0.00, color: [0, 0, 139] },
-      { stop: 0.33, color: [0, 0, 255] },
-      { stop: 0.66, color: [135, 206, 250] },
-      { stop: 1.00, color: [255, 255, 255] }
-    ];
-    for (let i = 0; i < stops.length - 1; i++) {
-      if (ratio >= stops[i].stop && ratio <= stops[i + 1].stop) {
-        let t = (ratio - stops[i].stop) / (stops[i + 1].stop - stops[i].stop);
-        let r = Math.round(stops[i].color[0] + t * (stops[i + 1].color[0] - stops[i].color[0]));
-        let g = Math.round(stops[i].color[1] + t * (stops[i + 1].color[1] - stops[i].color[1]));
-        let b = Math.round(stops[i].color[2] + t * (stops[i + 1].color[2] - stops[i].color[2]));
-        return `rgb(${r},${g},${b})`;
-      }
-    }
-    return 'rgb(255,255,255)';
-  }
+    const label = document.createElement('label');
+    label.htmlFor = checkbox.id;
+    label.textContent = getMethodLabel(id);
 
-  function createGeoJSON(points) {
-    return {
-      type: 'FeatureCollection',
-      features: points.map(point => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [point.longitude, point.latitude] },
-        properties: { density: point.density, color: getColorByDensity(point.density) }
-      }))
-    };
-  }
+    const weightInput = document.createElement('input');
+    weightInput.type = 'number';
+    weightInput.min = '0';
+    weightInput.step = '0.01';
+    weightInput.value = state.weights[id].toFixed(2);
+    weightInput.disabled = state.autoWeights || !checkbox.checked;
 
-  function addOrUpdateLayer(id, data, paintProps) {
-    if (map.getSource(id)) {
-      map.getSource(id).setData(data);
-    } else {
-      map.addSource(id, { type: 'geojson', data: data });
-      map.addLayer({ id, type: 'circle', source: id, paint: paintProps });
-    }
-  }
-
-  let popupReal = null;
-  let popupInterp = null;
-
-  map.on('load', () => {
-    setupPopups();
-    updateAndReload();
-  });
-
-  function setupPopups() {
-    popupReal = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
-    map.on('mouseenter', 'real-points-layer', e => {
-      if (!e.features.length) return;
-      map.getCanvas().style.cursor = 'pointer';
-      const coords = e.features[0].geometry.coordinates.slice();
-      const density = e.features[0].properties.density.toFixed(2);
-      popupReal.setLngLat(coords).setHTML(
-        `<div>
-          <strong>Real Data</strong><br/>
-          Плотность: ${density}<br/>
-          Долгота: ${coords[0].toFixed(4)}<br/>
-          Широта: ${coords[1].toFixed(4)}
-        </div>`
-      ).addTo(map);
-    });
-    map.on('mouseleave', 'real-points-layer', () => {
-      map.getCanvas().style.cursor = '';
-      popupReal.remove();
-    });
-
-    popupInterp = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
-    map.on('mouseenter', 'interp-points-layer', e => {
-      if (!e.features.length) return;
-      map.getCanvas().style.cursor = 'pointer';
-      const coords = e.features[0].geometry.coordinates.slice();
-      const density = e.features[0].properties.density.toFixed(2);
-      popupInterp.setLngLat(coords).setHTML(
-        `<div>
-          <strong>Interpolated Data</strong><br/>
-          Плотность: ${density}<br/>
-          Долгота: ${coords[0].toFixed(4)}<br/>
-          Широта: ${coords[1].toFixed(4)}
-        </div>`
-      ).addTo(map);
-    });
-    map.on('mouseleave', 'interp-points-layer', () => {
-      map.getCanvas().style.cursor = '';
-      popupInterp.remove();
-    });
-  }
-
-  function styleInterpPointsLayerByMode(mode) {
-    if (!map.getLayer('interp-points-layer')) return;
-    switch(mode) {
-      case 'none':
-        map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'transparent');
-        map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 1);
-        map.setPaintProperty('interp-points-layer', 'circle-radius', 5);
-        map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.9);
-        map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
-        break;
-      case 'size':
-        map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'transparent');
-        map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 1);
-        map.setPaintProperty('interp-points-layer', 'circle-radius', 4);
-        map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.5);
-        map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
-        break;
-      case 'color':
-        map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'red');
-        map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 2);
-        map.setPaintProperty('interp-points-layer', 'circle-radius', 6);
-        map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.9);
-        map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
-        break;
-    }
-  }
-
-  function moveHighlightIndicator() {
-    const ind = highlightModeIndicator;
-    const val = document.querySelector('input[name="highlight"]:checked').value;
-    if (val === 'none') ind.style.left = '0';
-    else if (val === 'size') ind.style.left = 'calc(100% / 3)';
-    else if (val === 'color') ind.style.left = 'calc(2 * 100% / 3)';
-  }
-
-  function renderCombinedMethodsList() {
-    combinedMethodsList.innerHTML = '';
-    ALL_METHODS.forEach(m => {
-      const row = document.createElement('div');
-      row.className = 'method-row';
-
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.id = `chk-${m.id}`;
-      checkbox.checked = !!state.combinedMethods[m.id];
-      checkbox.disabled = state.autoWeights;
-
-      const label = document.createElement('label');
-      label.htmlFor = checkbox.id;
-      label.textContent = m.label;
-
-      const weightInput = document.createElement('input');
-      weightInput.type = 'number';
-      weightInput.min = '0';
-      weightInput.step = '0.01';
-      weightInput.value = state.weights[m.id].toFixed(2);
+    checkbox.addEventListener('change', () => {
+      state.combinedMethods[id] = checkbox.checked;
       weightInput.disabled = state.autoWeights || !checkbox.checked;
-
-      checkbox.addEventListener('change', () => {
-        state.combinedMethods[m.id] = checkbox.checked;
-        weightInput.disabled = state.autoWeights || !checkbox.checked;
-        updateAndReload();
-      });
-      weightInput.addEventListener('input', () => {
-        let val = parseFloat(weightInput.value);
-        if (isNaN(val) || val < 0) val = 0;
-        state.weights[m.id] = val;
-        updateAndReload();
-      });
-
-      row.appendChild(checkbox);
-      row.appendChild(label);
-      row.appendChild(weightInput);
-
-      combinedMethodsList.appendChild(row);
+      updateAndReload();
     });
-  }
-
-  function updateControlPanelVisibility() {
-    if (state.interpolationEnabled) {
-      modeSelect.parentElement.style.display = 'flex';
-      highlightModeRow.style.display = 'flex';
-    } else {
-      modeSelect.parentElement.style.display = 'none';
-      highlightModeRow.style.display = 'none';
-    }
-    combinedMethodsBlock.style.display = (state.mode === 'combined' && state.interpolationEnabled) ? 'flex' : 'none';
-    singleMethodSelect.parentElement.style.display = (state.mode === 'single' && state.interpolationEnabled) ? 'flex' : 'none';
-  }
-
-  function getApiParams() {
-    if (!state.interpolationEnabled) return 'method=none';
-    if (state.mode === 'single') return 'method=' + encodeURIComponent(state.singleMethod);
-
-    const weightsObj = {};
-    Object.entries(state.weights).forEach(([k, v]) => {
-      if (state.combinedMethods[k]) weightsObj[k] = parseFloat(v) || 0;
+    weightInput.addEventListener('input', () => {
+      let val = parseFloat(weightInput.value);
+      if (isNaN(val) || val < 0) val = 0;
+      state.weights[id] = val;
+      updateAndReload();
     });
-    return 'method=combined'
-      + '&weights=' + encodeURIComponent(JSON.stringify(weightsObj))
-      + '&auto_weights=' + (state.autoWeights ? 'true' : 'false');
+
+    row.appendChild(checkbox);
+    row.appendChild(label);
+    row.appendChild(weightInput);
+
+    combinedMethodsList.appendChild(row);
+  });
+}
+
+// Остальной код без изменений
+
+function setupPopups() {
+  popupReal = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+  map.on('mouseenter', 'real-points-layer', e => {
+    if (!e.features.length) return;
+    map.getCanvas().style.cursor = 'pointer';
+    const coords = e.features[0].geometry.coordinates.slice();
+    const density = e.features[0].properties.density.toFixed(2);
+    popupReal.setLngLat(coords).setHTML(
+      `<div>
+        <strong>Real Data</strong><br/>
+        Плотность: ${density}<br/>
+        Долгота: ${coords[0].toFixed(4)}<br/>
+        Широта: ${coords[1].toFixed(4)}
+      </div>`
+    ).addTo(map);
+  });
+  map.on('mouseleave', 'real-points-layer', () => {
+    map.getCanvas().style.cursor = '';
+    popupReal.remove();
+  });
+
+  popupInterp = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+  map.on('mouseenter', 'interp-points-layer', e => {
+    if (!e.features.length) return;
+    map.getCanvas().style.cursor = 'pointer';
+    const coords = e.features[0].geometry.coordinates.slice();
+    const density = e.features[0].properties.density.toFixed(2);
+    popupInterp.setLngLat(coords).setHTML(
+      `<div>
+        <strong>Interpolated Data</strong><br/>
+        Плотность: ${density}<br/>
+        Долгота: ${coords[0].toFixed(4)}<br/>
+        Широта: ${coords[1].toFixed(4)}
+      </div>`
+    ).addTo(map);
+  });
+  map.on('mouseleave', 'interp-points-layer', () => {
+    map.getCanvas().style.cursor = '';
+    popupInterp.remove();
+  });
+}
+
+function styleInterpPointsLayerByMode(mode) {
+  if (!map.getLayer('interp-points-layer')) return;
+  switch(mode) {
+    case 'none':
+      map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'transparent');
+      map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 1);
+      map.setPaintProperty('interp-points-layer', 'circle-radius', 5);
+      map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.9);
+      map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
+      break;
+    case 'size':
+      map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'transparent');
+      map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 1);
+      map.setPaintProperty('interp-points-layer', 'circle-radius', 4);
+      map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.5);
+      map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
+      break;
+    case 'color':
+      map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'red');
+      map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 2);
+      map.setPaintProperty('interp-points-layer', 'circle-radius', 6);
+      map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.9);
+      map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
+      break;
   }
+}
 
-  function updateAndReload() {
-    updateControlPanelVisibility();
-    moveHighlightIndicator();
-    const dateStr = document.getElementById('date-input').value;
-    const params = getApiParams();
-    if (!dateStr) return;
-    loadDataForDate(dateStr, params.split('method=')[1].split('&')[0], state.interpolationEnabled);
-    styleInterpPointsLayerByMode(state.highlightMode);
+function moveHighlightIndicator() {
+  const ind = highlightModeIndicator;
+  const val = document.querySelector('input[name="highlight"]:checked').value;
+  if (val === 'none') ind.style.left = '0';
+  else if (val === 'size') ind.style.left = 'calc(100% / 3)';
+  else if (val === 'color') ind.style.left = 'calc(2 * 100% / 3)';
+}
+
+function updateControlPanelVisibility() {
+  if (state.interpolationEnabled) {
+    modeSelect.parentElement.style.display = 'flex';
+    highlightModeRow.style.display = 'flex';
+  } else {
+    modeSelect.parentElement.style.display = 'none';
+    highlightModeRow.style.display = 'none';
   }
+  combinedMethodsBlock.style.display = (state.mode === 'combined' && state.interpolationEnabled) ? 'flex' : 'none';
+  singleMethodSelect.parentElement.style.display = (state.mode === 'single' && state.interpolationEnabled) ? 'flex' : 'none';
+}
 
-  interpEnableSwitch.addEventListener('change', () => {
-    state.interpolationEnabled = interpEnableSwitch.checked;
-    updateControlPanelVisibility();
-    updateAndReload();
-  });
-  modeSelect.addEventListener('change', () => {
-    state.mode = modeSelect.value;
-    updateControlPanelVisibility();
-    updateAndReload();
-  });
-  singleMethodSelect.addEventListener('change', () => {
-    state.singleMethod = singleMethodSelect.value;
-    updateAndReload();
-  });
-  autoWeightsSwitch.addEventListener('change', () => {
-    state.autoWeights = autoWeightsSwitch.checked;
-    renderCombinedMethodsList();
-    updateAndReload();
-  });
-  highlightModeRadios.forEach(radio => {
-    radio.addEventListener('change', () => {
-      if (radio.checked) {
-        state.highlightMode = radio.value;
-        styleInterpPointsLayerByMode(state.highlightMode);
-        moveHighlightIndicator();
-      }
-    });
-  });
+function getApiParams() {
+  if (!state.interpolationEnabled) return 'method=none';
+  if (state.mode === 'single') return 'method=' + encodeURIComponent(state.singleMethod);
 
-  renderCombinedMethodsList();
+  const weightsObj = {};
+  Object.entries(state.weights).forEach(([k, v]) => {
+    if (state.combinedMethods[k]) weightsObj[k] = parseFloat(v) || 0;
+  });
+  return 'method=combined'
+    + '&weights=' + encodeURIComponent(JSON.stringify(weightsObj))
+    + '&auto_weights=' + (state.autoWeights ? 'true' : 'false');
+}
+
+function updateAndReload() {
   updateControlPanelVisibility();
   moveHighlightIndicator();
+  const dateStr = document.getElementById('date-input').value;
+  const params = getApiParams();
+  if (!dateStr) return;
+  loadDataForDate(dateStr, params.split('method=')[1].split('&')[0], state.interpolationEnabled);
+  styleInterpPointsLayerByMode(state.highlightMode);
+}
 
-  const fp = flatpickr(document.getElementById('date-input'), {
-    dateFormat: "Y-m-d",
-    defaultDate: "2019-01-08",
-    maxDate: new Date().fp_incr(0),
-    onChange: function(selectedDates, dateStr) {
-      if (dateStr) updateAndReload();
+interpEnableSwitch.addEventListener('change', () => {
+  state.interpolationEnabled = interpEnableSwitch.checked;
+  updateControlPanelVisibility();
+  updateAndReload();
+});
+modeSelect.addEventListener('change', () => {
+  state.mode = modeSelect.value;
+  updateControlPanelVisibility();
+  updateAndReload();
+});
+singleMethodSelect.addEventListener('change', () => {
+  state.singleMethod = singleMethodSelect.value;
+  updateAndReload();
+});
+autoWeightsSwitch.addEventListener('change', () => {
+  state.autoWeights = autoWeightsSwitch.checked;
+  renderCombinedMethodsList();
+  updateAndReload();
+});
+highlightModeRadios.forEach(radio => {
+  radio.addEventListener('change', () => {
+    if (radio.checked) {
+      state.highlightMode = radio.value;
+      styleInterpPointsLayerByMode(state.highlightMode);
+      moveHighlightIndicator();
     }
   });
-  document.getElementById('prev-week').addEventListener('click', () => {
-    const d = fp.selectedDates[0] || new Date();
-    d.setDate(d.getDate() - 7);
-    if (d <= new Date()) fp.setDate(d, true);
-  });
-  document.getElementById('next-week').addEventListener('click', () => {
-    const d = fp.selectedDates[0] || new Date();
-    d.setDate(d.getDate() + 7);
-    if (d <= new Date()) fp.setDate(d, true);
-  });
+});
 
-  function loadDataForDate(dateStr, method, interpolationEnabled) {
-    startRequest();
-    fetch(`/data?date=${dateStr}&method=${interpolationEnabled ? method : 'none'}` +
-          (method === 'combined' ? `&weights=${encodeURIComponent(JSON.stringify(state.weights))}&auto_weights=${state.autoWeights}` : ''))
-      .then(res => res.json())
-      .then(({real_points, interp_points}) => {
-        const realData = createGeoJSON(real_points);
-        addOrUpdateLayer('real-points-layer', realData, {
+moveHighlightIndicator();
+updateControlPanelVisibility();
+
+const fp = flatpickr(document.getElementById('date-input'), {
+  dateFormat: "Y-m-d",
+  defaultDate: "2019-01-08",
+  maxDate: new Date().fp_incr(0),
+  onChange: function(selectedDates, dateStr) {
+    if (dateStr) updateAndReload();
+  }
+});
+document.getElementById('prev-week').addEventListener('click', () => {
+  const d = fp.selectedDates[0] || new Date();
+  d.setDate(d.getDate() - 7);
+  if (d <= new Date()) fp.setDate(d, true);
+});
+document.getElementById('next-week').addEventListener('click', () => {
+  const d = fp.selectedDates[0] || new Date();
+  d.setDate(d.getDate() + 7);
+  if (d <= new Date()) fp.setDate(d, true);
+});
+
+function loadDataForDate(dateStr, method, interpolationEnabled) {
+  startRequest();
+  fetch(`/data?date=${dateStr}&method=${interpolationEnabled ? method : 'none'}` +
+        (method === 'combined' ? `&weights=${encodeURIComponent(JSON.stringify(state.weights))}&auto_weights=${state.autoWeights}` : ''))
+    .then(res => res.json())
+    .then(({real_points, interp_points}) => {
+      const realData = createGeoJSON(real_points);
+      addOrUpdateLayer('real-points-layer', realData, {
+        'circle-radius': 5,
+        'circle-color': ['get', 'color'],
+        'circle-opacity': 0.9,
+        'circle-stroke-color': 'transparent',
+        'circle-stroke-width': 1,
+        'circle-blur': 0
+      });
+
+      if (interpolationEnabled && method !== 'none') {
+        const interpData = createGeoJSON(interp_points);
+        addOrUpdateLayer('interp-points-layer', interpData, {
           'circle-radius': 5,
           'circle-color': ['get', 'color'],
           'circle-opacity': 0.9,
@@ -685,50 +727,15 @@
           'circle-stroke-width': 1,
           'circle-blur': 0
         });
-
-        if (interpolationEnabled && method !== 'none') {
-          const interpData = createGeoJSON(interp_points);
-          addOrUpdateLayer('interp-points-layer', interpData, {
-            'circle-radius': 5,
-            'circle-color': ['get', 'color'],
-            'circle-opacity': 0.9,
-            'circle-stroke-color': 'transparent',
-            'circle-stroke-width': 1,
-            'circle-blur': 0
-          });
-          styleInterpPointsLayerByMode(state.highlightMode);
-        } else {
-          if (map.getLayer('interp-points-layer')) map.removeLayer('interp-points-layer');
-          if (map.getSource('interp-points-layer')) map.removeSource('interp-points-layer');
-        }
-      })
-      .catch(() => {})
-      .finally(() => endRequest());
-  }
-
-//   // Заглушки для startRequest и endRequest, если их нет
-//   function startRequest() { /* тут твоя логика */ }
-//   function endRequest() { /* тут твоя логика */ }
-
-  // Заглушки для createGeoJSON и addOrUpdateLayer, если их нет
-  function createGeoJSON(points) {
-    return {
-      type: 'FeatureCollection',
-      features: points.map(point => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [point.longitude, point.latitude] },
-        properties: { density: point.density, color: getColorByDensity(point.density) }
-      }))
-    };
-  }
-  function addOrUpdateLayer(id, data, paintProps) {
-    if (map.getSource(id)) {
-      map.getSource(id).setData(data);
-    } else {
-      map.addSource(id, { type: 'geojson', data: data });
-      map.addLayer({ id, type: 'circle', source: id, paint: paintProps });
-    }
-  }
+        styleInterpPointsLayerByMode(state.highlightMode);
+      } else {
+        if (map.getLayer('interp-points-layer')) map.removeLayer('interp-points-layer');
+        if (map.getSource('interp-points-layer')) map.removeSource('interp-points-layer');
+      }
+    })
+    .catch(() => {})
+    .finally(() => endRequest());
+}
 </script>
 </body>
 </html>
