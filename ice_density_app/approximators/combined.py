@@ -5,6 +5,7 @@ class WeightedCombinedInterpolator(ApproximatorBase):
     Комбинированный аппроксиматор. Объединяет результаты нескольких аппроксиматоров
     с учетом заданных или автоматически вычисленных весов.
     """
+    kind = 'combined'
 
     def __init__(self, interpolators_dict, weights=None, auto_weights=False):
         """
@@ -17,9 +18,9 @@ class WeightedCombinedInterpolator(ApproximatorBase):
         self.weights = weights or {name: 1.0 for name in interpolators_dict}
         self.auto_weights = auto_weights
 
-    @property
-    def kind(self) -> str:
-        return 'combined'
+    # @property
+    # def kind(self) -> str:
+    #     return 'combined'
 
     def approximate(self, target_date, coords_to_approximate, known_points):
         """

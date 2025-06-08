@@ -625,6 +625,9 @@ function updateControlPanelVisibility() {
   }
   combinedMethodsBlock.style.display = (state.mode === 'combined' && state.interpolationEnabled) ? 'flex' : 'none';
   singleMethodSelect.parentElement.style.display = (state.mode === 'single' && state.interpolationEnabled) ? 'flex' : 'none';
+  if (combinedMethodsBlock.style.display === 'flex') {
+    renderCombinedMethodsList();
+  }
 }
 
 function getApiParams() {
@@ -658,6 +661,7 @@ interpEnableSwitch.addEventListener('change', () => {
 modeSelect.addEventListener('change', () => {
   state.mode = modeSelect.value;
   updateControlPanelVisibility();
+  renderCombinedMethodsList(); // ← добавить!
   updateAndReload();
 });
 singleMethodSelect.addEventListener('change', () => {
@@ -684,7 +688,7 @@ updateControlPanelVisibility();
 
 const fp = flatpickr(document.getElementById('date-input'), {
   dateFormat: "Y-m-d",
-  defaultDate: "2019-01-08",
+  defaultDate: "2019-06-04",
   maxDate: new Date().fp_incr(0),
   onChange: function(selectedDates, dateStr) {
     if (dateStr) updateAndReload();

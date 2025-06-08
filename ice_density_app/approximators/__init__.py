@@ -38,6 +38,7 @@ def list_methods(kind: str = None) -> list[str]:
     """
     result = []
     for name, cls in AVAILABLE_APPROXIMATORS.items():
-        if kind is None or cls(None, set()).kind == kind:
+        if kind is None or getattr(cls, 'kind', None) == kind:
             result.append(name)
     return result
+

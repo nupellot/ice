@@ -8,6 +8,7 @@ class KrigingInterpolator(ApproximatorBase):
     """
     Пространственный кригинг с экспоненциальной вариограммой, ограничением на радиус и число соседей.
     """
+    kind = 'spatial'
 
     def __init__(self, sill=34.37, range_param=59.15, max_neighbors=10, max_radius_km=30):
         """
@@ -22,9 +23,9 @@ class KrigingInterpolator(ApproximatorBase):
         self.max_neighbors = max_neighbors
         self.max_radius_km = max_radius_km
 
-    @property
-    def kind(self) -> str:
-        return 'spatial'
+    # @property
+    # def kind(self) -> str:
+    #     return 'spatial'
 
     def variogram(self, h: np.ndarray) -> np.ndarray:
         """
@@ -123,14 +124,15 @@ class DelaunayInterpolator(ApproximatorBase):
     """
     Пространственная интерполяция по триангуляции Делоне.
     """
+    kind = 'spatial'
 
     def __init__(self):
         super().__init__()
         self.triangulation_cache = {}
 
-    @property
-    def kind(self) -> str:
-        return 'spatial'
+    # @property
+    # def kind(self) -> str:
+    #     return 'spatial'
 
     def build_triangulation(self, known_points, target_date):
         """

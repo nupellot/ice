@@ -7,6 +7,7 @@ class TemporalInterpolator(ApproximatorBase):
 
     Метрика качества: количество дней до ближайшего наблюдения (чем меньше, тем лучше).
     """
+    kind = 'temporal'
 
     def __init__(self, df, unique_coords):
         """
@@ -20,9 +21,9 @@ class TemporalInterpolator(ApproximatorBase):
         # Предварительно группируем данные по координатам и сортируем по времени
         self.grouped = df.sort_values('date_only').groupby(['longitude', 'latitude'])
 
-    @property
-    def kind(self) -> str:
-        return 'temporal'
+    # @property
+    # def kind(self) -> str:
+    #     return 'temporal'
 
     def approximate(self, target_date, coords_to_approximate, known_points):
         """

@@ -6,7 +6,8 @@ class ApproximatorBase(ABC):
     Абстрактный базовый класс для всех аппроксиматоров (в т.ч. интерполяторов).
     Поддерживает кэширование рассчитанных значений и метрик качества.
     """
-
+    kind: str = None
+    
     def __init__(self):
         # Кэш аппроксимированных значений: {(lon, lat): {target_date: value, ...}, ...}
         self.value_cache = defaultdict(dict)
