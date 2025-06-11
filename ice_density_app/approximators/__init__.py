@@ -2,12 +2,14 @@ from .base import ApproximatorBase
 from .temporal import TemporalInterpolator
 from .spatial import KrigingInterpolator, DelaunayInterpolator
 from .combined import WeightedCombinedInterpolator
+from .fourier import FourierTemporalApproximator
 
 # Список всех базовых (не комбинированных) методов
 AVAILABLE_APPROXIMATORS = {
     'temporal': TemporalInterpolator,
     'kriging': KrigingInterpolator,
     'delaunay': DelaunayInterpolator,
+    'fourier': FourierTemporalApproximator
 }
 
 # Добавим комбинированный метод как отдельную опцию

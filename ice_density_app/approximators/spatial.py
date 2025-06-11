@@ -122,78 +122,96 @@ class KrigingInterpolator(ApproximatorBase):
 
 class DelaunayInterpolator(ApproximatorBase):
     """
-    Пространственная интерполяция по триангуляции Делоне.
+    Пространственный интерполятор, основанный на триангуляции Делоне.
+    Выполняет линейную интерполяцию внутри треугольников Делоне в пространстве (lon, lat).
+    Метрика качества — расстояние до ближайшей вершины треугольника, если точка внутри;
+    если точка вне выпуклой оболочки — расстояние до ближайшей известной точки.
     """
+
     kind = 'spatial'
 
     def __init__(self):
         super().__init__()
+        # Кэш для триангуляций: на каждый временной срез (date) строим отдельную триангуляцию
         self.triangulation_cache = {}
-
-    # @property
-    # def kind(self) -> str:
-    #     return 'spatial'
 
     def build_triangulation(self, known_points, target_date):
         """
-        Строит или достаёт из кэша триангуляцию для известного множества точек.
+        Строит (или достаёт из кэша) объект триангуляции Делоне для известного набора точек.
+        known_points — список словарей с 'longitude', 'latitude'
         """
         if target_date in self.triangulation_cache:
+            # Уже строили для этого временного среза
             return self.triangulation_cache[target_date]
-
-        coords = np.array([[p['longitude'], p['latitude']] for p in known_points])
-        if len(coords) < 3:
+        points = np.array([[p['longitude'], p['latitude']] for p in known_points])
+        if len(points) < 3:
+            # Невозможно построить триангуляцию по менее чем 3 точкам
             return None
-
-        tri = Delaunay(coords)
+        tri = Delaunay(points)
         self.triangulation_cache[target_date] = tri
         return tri
 
     def approximate(self, target_date, coords_to_approximate, known_points):
         """
-        Возвращает значения для координат внутри треугольников Делоне.
+        Производит линейную интерполяцию плотности льда по Делоне.
+        Для каждой точки из coords_to_approximate (не входящей в known_points) ищет,
+        попадает ли она внутрь какого-либо треугольника триангуляции.
+        Если да — вычисляет барицентрические координаты и интерполирует значение плотности.
+        Если нет — качество ставится равным расстоянию до ближайшей точки, значение не возвращается.
         """
         if not known_points:
             return {}
 
-        interp_results = {}
-        coords_known = np.array([[p['longitude'], p['latitude']] for p in known_points])
-        values_known = np.array([p['density'] for p in known_points])
-        known_coords_set = {(p['longitude'], p['latitude']) for p in known_points}
-
+        # Получаем или строим триангуляцию
         tri = self.build_triangulation(known_points, target_date)
         if tri is None:
             return {}
 
+        points = np.array([[p['longitude'], p['latitude']] for p in known_points])
+        values = np.array([p['density'] for p in known_points])
+        known_coords_set = {(p['longitude'], p['latitude']) for p in known_points}
+
+        interp_results = {}
+
         for lon, lat in coords_to_approximate:
             if (lon, lat) in known_coords_set:
-                continue
+                continue  # не интерполируем уже известные точки
 
+            # Проверяем, есть ли кэш
             cached = self.get_from_cache(lon, lat, target_date)
             if cached is not None:
                 interp_results[(lon, lat)] = cached
                 continue
 
+            # Проверяем, в каком треугольнике находится точка (индекс треугольника)
             simplex = tri.find_simplex([lon, lat])
             if simplex == -1:
-                # Вне треугольников — метрика качества = расстояние до ближайшей точки
-                min_dist = np.min(np.linalg.norm(coords_known - [lon, lat], axis=1))
+                # Точка вне выпуклой оболочки (convex hull) известных точек
+                # Считаем качество как минимальное расстояние до ближайшей известной точки
+                min_dist = np.min(np.linalg.norm(points - [lon, lat], axis=1))
                 self.set_quality_to_cache(lon, lat, target_date, float(min_dist))
                 continue
 
+            # Индексы вершин треугольника
             vertices = tri.simplices[simplex]
+            # Параметры аффинного преобразования для данного треугольника
             transform = tri.transform[simplex]
+            # Вычисляем вектор смещения относительно начала треугольника
             delta = np.array([lon, lat]) - transform[2]
+            # Находим барицентрические координаты (2 координаты, третья — по норме)
             bary = np.dot(transform[:2, :], delta)
             bary_coords = np.append(bary, 1 - bary.sum())
 
             if np.any(bary_coords < -1e-12):
+                # Если хоть одна координата отрицательна — "за пределами" треугольника (может не случиться в теории)
                 continue
 
-            value = float(np.dot(bary_coords, values_known[vertices]))
+            # Линейная интерполяция: значения в вершинах умножаются на их барицентрические координаты
+            value = float(np.dot(bary_coords, values[vertices]))
             self.set_to_cache(lon, lat, target_date, value)
 
-            max_dist = float(np.max(np.linalg.norm(coords_known[vertices] - [lon, lat], axis=1)))
+            # Качество — максимальное расстояние до вершин треугольника
+            max_dist = float(np.max(np.linalg.norm(points[vertices] - [lon, lat], axis=1)))
             self.set_quality_to_cache(lon, lat, target_date, max_dist)
 
             interp_results[(lon, lat)] = value
@@ -202,15 +220,15 @@ class DelaunayInterpolator(ApproximatorBase):
 
     def quality_metric(self, target_date, coord, known_points=None):
         """
-        Метрика качества — расстояние до ближайшей вершины (внутри) или ближайшей точки (вне).
+        Метрика качества для точки:
+        - Если точка внутри треугольника — максимальное расстояние до вершин треугольника.
+        - Если вне выпуклой оболочки — расстояние до ближайшей точки.
         """
         lon, lat = coord
         cached = self.get_quality_from_cache(lon, lat, target_date)
         if cached is not None:
             return cached
-
         if known_points is not None:
             self.approximate(target_date, [coord], known_points)
             return self.get_quality_from_cache(lon, lat, target_date)
-
         return None

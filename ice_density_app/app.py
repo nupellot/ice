@@ -22,11 +22,13 @@ DF['date_only'] = DF['date'].dt.date
 UNIQUE_COORDS_DF = pd.read_csv('unique_cords_below_85_latitude.csv')
 UNIQUE_COORDS = set(zip(UNIQUE_COORDS_DF.longitude, UNIQUE_COORDS_DF.latitude))
 
-# --- Базовые аппроксиматоры, переиспользуемые при одиночном вызове и комбинировании ---
+# --- Базовые аппроксиматоры (одиночные и для комбинирования) ---
 SHARED_APPROXIMATORS = {
     'temporal': create_approximator('temporal', df=DF, unique_coords=UNIQUE_COORDS),
     'kriging': create_approximator('kriging', max_neighbors=15, max_radius_km=30),
     'delaunay': create_approximator('delaunay'),
+    # Исправлено название параметра harmonics
+    'fourier': create_approximator('fourier', df=DF, unique_coords=UNIQUE_COORDS, harmonics=10)
 }
 
 # --- Главная страница ---
@@ -34,7 +36,7 @@ SHARED_APPROXIMATORS = {
 def index():
     return render_template('index.html', mapbox_token=MAPBOX_TOKEN)
 
-# --- API получения данных ---
+# --- API получения данных для карты ---
 @app.route('/data')
 def data():
     date_str = request.args.get('date', '')
@@ -48,13 +50,13 @@ def data():
     except Exception:
         return jsonify({"real_points": [], "interp_points": []})
 
-    # Выбор реальных точек
+    # Реальные точки на эту дату
     real_points_df = DF[DF['date_only'] == target_date]
     real_points_list = real_points_df[['longitude', 'latitude', 'density']].to_dict(orient='records')
     real_coords = {(p['longitude'], p['latitude']) for p in real_points_list}
     coords_to_interp = UNIQUE_COORDS - real_coords
 
-    # Парсинг весов (если указаны)
+    # Парсинг весов
     weights = None
     if weights_json:
         try:
@@ -62,7 +64,7 @@ def data():
         except json.JSONDecodeError:
             weights = None
 
-    # --- Выбор интерполянта ---
+    # --- Выбор метода аппроксимации ---
     if method_name == COMBINED_NAME:
         used_methods = [
             name for name in SHARED_APPROXIMATORS
@@ -73,24 +75,26 @@ def data():
             weights = None
 
         comb_dict = {name: SHARED_APPROXIMATORS[name] for name in used_methods}
-        approximator = create_approximator(COMBINED_NAME,
-                                           interpolators_dict=comb_dict,
-                                           weights=weights,
-                                           auto_weights=auto_weights)
+        approximator = create_approximator(
+            COMBINED_NAME,
+            interpolators_dict=comb_dict,
+            weights=weights,
+            auto_weights=auto_weights
+        )
     elif method_name in SHARED_APPROXIMATORS:
         approximator = SHARED_APPROXIMATORS[method_name]
     else:
-        approximator = None  # режим 'none' или ошибка
+        approximator = None
 
-    # --- Вычисление интерполированных значений ---
+    # --- Интерполяция ---
     if approximator is not None:
         interp_dict = approximator.approximate(target_date, coords_to_interp, real_points_list)
     else:
         interp_dict = {}
 
     interp_points_list = [
-        {'longitude': lon, 'latitude': lat, 'density': density}
-        for (lon, lat), density in interp_dict.items()
+        {'longitude': lon, 'latitude': lat, 'density': dens}
+        for (lon, lat), dens in interp_dict.items()
     ]
 
     return jsonify({
@@ -98,22 +102,14 @@ def data():
         'interp_points': interp_points_list
     })
 
-
+# --- Эндпоинт: список доступных методов ---
 @app.route('/methods')
 def list_available_methods():
-    """
-    Возвращает доступные аппроксиматоры, сгруппированные по типу.
-    """
     kinds = ['temporal', 'spatial']
-    result = {
+    return jsonify({
         kind: list_methods(kind)
         for kind in kinds
-    }
-    return jsonify(result)
-
-
-
-
+    })
 
 if __name__ == '__main__':
     app.run(debug=True)
