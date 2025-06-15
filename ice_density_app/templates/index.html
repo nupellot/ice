@@ -444,7 +444,11 @@ function createGeoJSON(points) {
     features: points.map(point => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [point.longitude, point.latitude] },
-      properties: { density: point.density, color: getColorByDensity(point.density) }
+      properties: {
+        density: point.density,
+        stddev: point.stddev ?? null,
+        color: getColorByDensity(point.density)
+      }
     }))
   };
 }
@@ -564,12 +568,15 @@ function setupPopups() {
   map.on('mouseenter', 'interp-points-layer', e => {
     if (!e.features.length) return;
     map.getCanvas().style.cursor = 'pointer';
-    const coords = e.features[0].geometry.coordinates.slice();
-    const density = e.features[0].properties.density.toFixed(2);
+    const feature = e.features[0];
+    const coords = feature.geometry.coordinates.slice();
+    const density = feature.properties.density.toFixed(2);
+    const stddev = feature.properties.stddev ? Number(feature.properties.stddev).toFixed(2) : '–';
     popupInterp.setLngLat(coords).setHTML(
       `<div>
         <strong>Interpolated Data</strong><br/>
         Плотность: ${density}<br/>
+        Разброс: ${stddev}<br/>
         Долгота: ${coords[0].toFixed(4)}<br/>
         Широта: ${coords[1].toFixed(4)}
       </div>`

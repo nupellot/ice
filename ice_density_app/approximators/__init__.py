@@ -3,7 +3,7 @@ from .temporal import TemporalInterpolator
 from .spatial import KrigingInterpolator, DelaunayInterpolator
 from .combined import WeightedCombinedInterpolator
 from .fourier import FourierTemporalApproximator
-from .spline import SplineTemporalApproximator
+from .spline import SmoothingSplineApproximator
 
 # Список всех базовых (не комбинированных) методов
 
@@ -13,7 +13,7 @@ AVAILABLE_APPROXIMATORS = {
     'kriging': KrigingInterpolator,
     'delaunay': DelaunayInterpolator,
     'fourier': FourierTemporalApproximator,
-    'spline': SplineTemporalApproximator,
+    'spline': SmoothingSplineApproximator,
     'combined': WeightedCombinedInterpolator,
 }
 

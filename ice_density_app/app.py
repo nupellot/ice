@@ -27,8 +27,7 @@ SHARED_APPROXIMATORS = {
     'temporal': create_approximator('temporal', df=DF, unique_coords=UNIQUE_COORDS),
     'kriging': create_approximator('kriging', max_neighbors=150, max_radius_km=300),
     'delaunay': create_approximator('delaunay'),
-    # Исправлено название параметра harmonics
-    'fourier': create_approximator('fourier', df=DF, unique_coords=UNIQUE_COORDS, harmonics=10),
+    'fourier': create_approximator('fourier', df=DF, unique_coords=UNIQUE_COORDS, n_harmonics=10),
     'spline': create_approximator('spline', df=DF, unique_coords=UNIQUE_COORDS, smoothing_factor=1.0)
 }
 
@@ -45,19 +44,16 @@ def data():
     weights_json = request.args.get('weights')
     auto_weights = request.args.get('auto_weights', 'false').lower() == 'true'
 
-    # Парсинг даты
     try:
         target_date = pd.to_datetime(date_str).date()
     except Exception:
         return jsonify({"real_points": [], "interp_points": []})
 
-    # Реальные точки на эту дату
     real_points_df = DF[DF['date_only'] == target_date]
     real_points_list = real_points_df[['longitude', 'latitude', 'density']].to_dict(orient='records')
     real_coords = {(p['longitude'], p['latitude']) for p in real_points_list}
     coords_to_interp = UNIQUE_COORDS - real_coords
 
-    # Парсинг весов
     weights = None
     if weights_json:
         try:
@@ -65,7 +61,6 @@ def data():
         except json.JSONDecodeError:
             weights = None
 
-    # --- Выбор метода аппроксимации ---
     if method_name == COMBINED_NAME:
         used_methods = [
             name for name in SHARED_APPROXIMATORS
@@ -87,16 +82,20 @@ def data():
     else:
         approximator = None
 
-    # --- Интерполяция ---
     if approximator is not None:
         interp_dict = approximator.approximate(target_date, coords_to_interp, real_points_list)
     else:
         interp_dict = {}
 
-    interp_points_list = [
-        {'longitude': lon, 'latitude': lat, 'density': dens}
-        for (lon, lat), dens in interp_dict.items()
-    ]
+    interp_points_list = []
+    for (lon, lat), dens in interp_dict.items():
+        stddev = approximator.quality_metric(target_date, (lon, lat), real_points_list)
+        interp_points_list.append({
+            'longitude': lon,
+            'latitude': lat,
+            'density': dens,
+            'stddev': stddev
+        })
 
     return jsonify({
         'real_points': real_points_list,

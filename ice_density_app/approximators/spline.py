@@ -1,110 +1,78 @@
-# core/approximators/spline.py
-
 import numpy as np
 import pandas as pd
 from scipy.interpolate import UnivariateSpline
 from .base import ApproximatorBase
 
-class SplineTemporalApproximator(ApproximatorBase):
+class SmoothingSplineApproximator(ApproximatorBase):
     """
-    Временной аппроксиматор с использованием сглаживающего кубического сплайна
-    через SciPy's UnivariateSpline для данных в каждой точке.
+    Временной аппроксиматор на основе сглаживающего сплайна.
+    Использует UnivariateSpline из scipy для аппроксимации плотности во времени.
+    Метрика качества — RMSE между предсказанием и обучающими точками (трактуется как разброс).
     """
+
     kind = 'temporal'
 
-    def __init__(self, df: pd.DataFrame, unique_coords: set, smoothing_factor: float = None, k: int = 3):
-        """
-        :param df: DataFrame с полями ['date_only', 'longitude', 'latitude', 'density']
-        :param unique_coords: множестов координат (lon, lat)
-        :param smoothing_factor: параметр s (smoothing_factor в UnivariateSpline)
-                                  если None — автоподбор (GCV-подход)
-        :param k: степень сплайна (1 ≤ k ≤ 5), обычно 3 (кубический)
-        """
+    def __init__(self, df, unique_coords, smoothing_factor=None):
         super().__init__()
         self.df = df
         self.unique_coords = unique_coords
-        self.s = smoothing_factor
-        self.k = k
-        self.splines: dict[tuple[float, float], UnivariateSpline] = {}
-        self._prepare_splines()
+        self.smoothing_factor = smoothing_factor
+        self.grouped = df.copy()
+        self.grouped['ordinal_day'] = self.grouped['date_only'].apply(lambda d: d.toordinal())
+        self.coord_groups = self.grouped.groupby(['longitude', 'latitude'])
 
-    def _prepare_splines(self):
-        """
-        Построение одного UnivariateSpline для каждой точки.
-        Работает по всем координатам, для которых есть ≥ k+1 точек.
-        """
-        grouped = self.df.groupby(['longitude', 'latitude'])
-        for coord, grp in grouped:
-            # для корректной работы splines нужно не менее k+1 наблюдений
-            if len(grp) < self.k + 1:
+    def fit_spline(self, x, y):
+        if len(x) < 4:
+            return lambda t: y[0] if len(y) else None, None
+        spline = UnivariateSpline(x, y, s=self.smoothing_factor)
+        predictions = spline(x)
+        rmse = float(np.sqrt(np.mean((y - predictions) ** 2)))
+        return spline, rmse
+
+    def approximate(self, target_date, coords_to_interpolate, known_points):
+        results = {}
+        day = pd.to_datetime(target_date).toordinal()
+        known_set = {(p['longitude'], p['latitude']) for p in known_points}
+
+        for coord in coords_to_interpolate:
+            lon, lat = coord
+            if coord in known_set:
                 continue
 
-            dates = pd.to_datetime(grp['date_only'])
-            x = dates.map(lambda d: d.timetuple().tm_yday).values.astype(float)
-            y = grp['density'].values.astype(float)
+            cached = self.get_from_cache(lon, lat, target_date)
+            if cached is not None:
+                results[coord] = cached
+                continue
 
-            # создаём сплайн
             try:
-                spline = UnivariateSpline(x, y, k=self.k, s=self.s)
-            except Exception:
+                group = self.coord_groups.get_group((lon, lat))
+            except KeyError:
                 continue
 
-            self.splines[coord] = spline
+            if len(group) < 4:
+                continue
 
-    def interpolate_point(self, lon, lat, target_date) -> float | None:
-        """
-        Получение значения из сплайна, либо из кеша.
-        """
-        cached = self.get_from_cache(lon, lat, target_date)
+            x = group['ordinal_day'].values
+            y = group['density'].values
+            spline, rmse = self.fit_spline(x, y)
+
+            if spline is not None:
+                prediction = float(spline(day))
+                results[coord] = prediction
+                self.set_to_cache(lon, lat, target_date, prediction)
+                if rmse is not None:
+                    self.set_quality_to_cache(lon, lat, target_date, rmse)
+
+        return results
+
+    def quality_metric(self, target_date, coord, known_points=None):
+        lon, lat = coord
+        cached = self.get_quality_from_cache(lon, lat, target_date)
         if cached is not None:
             return cached
 
-        spline = self.splines.get((lon, lat))
-        if not spline:
-            return None
+        if known_points is not None:
+            _ = self.approximate(target_date, [coord], known_points)
+            return self.get_quality_from_cache(lon, lat, target_date)
 
-        t = pd.to_datetime(target_date).timetuple().tm_yday
-        try:
-            v = float(spline(t))
-        except ValueError:
-            return None
-
-        self.set_to_cache(lon, lat, target_date, v)
-        return v
-
-    def approximate(self, target_date, coords_to_interpolate, known_points):
-        """
-        Интерполяция по набору координат, исключая известные real_points.
-        """
-        results = {}
-        known = { (p['longitude'], p['latitude']) for p in known_points }
-        for coord in coords_to_interpolate:
-            if coord in known:
-                continue
-            val = self.interpolate_point(coord[0], coord[1], target_date)
-            if val is not None:
-                results[coord] = val
-        return results
-
-    def quality_metric(self, target_date, coord, known_points=None) -> float | None:
-        """
-        Использует среднеквадратичную ошибку (RMSE) на обучающих данных точки.
-        """
-        lon, lat = coord
-        cached_q = self.get_quality_from_cache(lon, lat, target_date)
-        if cached_q is not None:
-            return cached_q
-
-        spline = self.splines.get((lon, lat))
-        if not spline:
-            return None
-
-        grp = self.df[(self.df.longitude == lon) & (self.df.latitude == lat)]
-        dates = pd.to_datetime(grp['date_only'])
-        x = dates.map(lambda d: d.timetuple().tm_yday).values.astype(float)
-        y = grp['density'].values.astype(float)
-
-        preds = spline(x)
-        rmse = float(np.sqrt(np.mean((preds - y)**2)))
-        self.set_quality_to_cache(lon, lat, target_date, rmse)
-        return rmse
+        return None

@@ -2,82 +2,67 @@ from .base import ApproximatorBase
 
 class WeightedCombinedInterpolator(ApproximatorBase):
     """
-    Комбинированный аппроксиматор. Объединяет результаты нескольких аппроксиматоров
-    с учетом заданных или автоматически вычисленных весов.
+    Комбинированный аппроксиматор. Объединяет несколько аппроксиматоров с весами.
+    Поддерживает авто-взвешивание на основе метрики разброса (стандартного отклонения).
     """
+
     kind = 'combined'
 
     def __init__(self, interpolators_dict, weights=None, auto_weights=False):
-        """
-        :param interpolators_dict: словарь {имя_метода: экземпляр_аппроксиматора}
-        :param weights: словарь {имя_метода: вес} — пользовательские веса
-        :param auto_weights: если True, веса вычисляются автоматически на основе качества
-        """
         super().__init__()
         self.interpolators_dict = interpolators_dict
         self.weights = weights or {name: 1.0 for name in interpolators_dict}
         self.auto_weights = auto_weights
 
-    # @property
-    # def kind(self) -> str:
-    #     return 'combined'
-
-    def approximate(self, target_date, coords_to_approximate, known_points):
-        """
-        Выполняет интерполяцию с комбинированием значений всех подаппроксиматоров.
-        """
+    def approximate(self, target_date, coords_to_interpolate, known_points):
         results_by_method = {
-            name: interp.approximate(target_date, coords_to_approximate, known_points)
+            name: interp.approximate(target_date, coords_to_interpolate, known_points)
             for name, interp in self.interpolators_dict.items()
         }
 
-        combined = {}
-        for lon, lat in coords_to_approximate:
-            coord = (lon, lat)
-            values = {}
-            weights_used = {}
+        final_results = {}
+        for coord in coords_to_interpolate:
+            numer = 0.0
+            denom = 0.0
+            dyn_weights = {}
 
             for name, interp in self.interpolators_dict.items():
-                value = results_by_method[name].get(coord)
-                if value is None:
+                val = results_by_method[name].get(coord)
+                if val is None:
                     continue
 
                 if self.auto_weights:
-                    metric = interp.quality_metric(target_date, coord, known_points)
-                    if metric is not None and metric > 0:
-                        weights_used[name] = 1.0 / (metric + 1e-6)
+                    std = interp.quality_metric(target_date, coord, known_points)
+                    if std is not None and std > 0:
+                        dyn_weights[name] = 1.0 / (std + 1e-6)
                     else:
-                        weights_used[name] = 0.0
+                        dyn_weights[name] = 0.0
                 else:
-                    weights_used[name] = self.weights.get(name, 1.0)
+                    dyn_weights[name] = self.weights.get(name, 1.0)
 
-                values[name] = value
+            sum_w = sum(dyn_weights.values())
+            if sum_w > 0:
+                for name, w in dyn_weights.items():
+                    val = results_by_method[name].get(coord)
+                    if val is not None:
+                        numer += val * w
+                        denom += w
+                final_value = numer / denom if denom > 0 else None
+                if final_value is not None:
+                    self.set_to_cache(coord[0], coord[1], target_date, final_value)
+                    final_results[coord] = final_value
 
-            total_weight = sum(weights_used.values())
-            if total_weight > 0:
-                weighted_sum = sum(values[name] * weights_used[name] for name in values)
-                combined_value = weighted_sum / total_weight
-                self.set_to_cache(lon, lat, target_date, combined_value)
-                combined[coord] = combined_value
-
-        return combined
+        return final_results
 
     def quality_metric(self, target_date, coord, known_points=None):
-        """
-        Вычисляет средневзвешенную метрику качества среди всех подаппроксиматоров.
-        """
-        metrics = []
-        weights = []
-
+        stds = []
+        ws = []
         for name, interp in self.interpolators_dict.items():
-            metric = interp.quality_metric(target_date, coord, known_points)
-            weight = self.weights.get(name, 1.0)
-            if metric is not None:
-                metrics.append(metric)
-                weights.append(weight)
-
-        if metrics and weights:
-            total_weight = sum(weights)
-            return sum(m * w for m, w in zip(metrics, weights)) / total_weight
-
+            std = interp.quality_metric(target_date, coord, known_points)
+            w = self.weights.get(name, 1.0)
+            if std is not None and w > 0:
+                stds.append(std)
+                ws.append(w)
+        if stds and ws:
+            return sum(s * w for s, w in zip(stds, ws)) / sum(ws)
         return None

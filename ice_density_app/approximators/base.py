@@ -1,79 +1,59 @@
-from collections import defaultdict
 from abc import ABC, abstractmethod
+from collections import defaultdict
 
 class ApproximatorBase(ABC):
     """
-    Абстрактный базовый класс для всех аппроксиматоров (в т.ч. интерполяторов).
-    Поддерживает кэширование рассчитанных значений и метрик качества.
+    Базовый класс для всех аппроксиматоров (временных, пространственных и комбинированных).
+    Поддерживает кэш значений и метрик качества, где метрика интерпретируется как ожидаемое стандартное отклонение (разброс).
     """
-    kind: str = None
-    
-    def __init__(self):
-        # Кэш аппроксимированных значений: {(lon, lat): {target_date: value, ...}, ...}
-        self.value_cache = defaultdict(dict)
 
-        # Кэш метрик качества: {(lon, lat): {target_date: metric, ...}, ...}
+    def __init__(self):
+        # Кэш аппроксимированных значений: {(lon, lat): {target_date: value}}
+        self.approx_cache = defaultdict(dict)
+
+        # Кэш оценок качества (разброса): {(lon, lat): {target_date: stddev}}
         self.quality_cache = defaultdict(dict)
 
-    def get_from_cache(self, lon: float, lat: float, target_date) -> float | None:
-        """
-        Получить значение из кэша, если оно там есть.
-        """
-        return self.value_cache.get((lon, lat), {}).get(target_date, None)
+    def get_from_cache(self, lon, lat, target_date):
+        return self.approx_cache.get((lon, lat), {}).get(target_date, None)
 
-    def set_to_cache(self, lon: float, lat: float, target_date, value: float) -> None:
-        """
-        Сохранить значение в кэш.
-        """
-        self.value_cache[(lon, lat)][target_date] = value
+    def set_to_cache(self, lon, lat, target_date, value):
+        self.approx_cache[(lon, lat)][target_date] = value
 
-    def get_quality_from_cache(self, lon: float, lat: float, target_date) -> float | None:
-        """
-        Получить сохранённую метрику качества из кэша.
-        """
+    def get_quality_from_cache(self, lon, lat, target_date):
         return self.quality_cache.get((lon, lat), {}).get(target_date, None)
 
-    def set_quality_to_cache(self, lon: float, lat: float, target_date, metric: float) -> None:
-        """
-        Сохранить метрику качества в кэш.
-        """
-        self.quality_cache[(lon, lat)][target_date] = metric
+    def set_quality_to_cache(self, lon, lat, target_date, value):
+        self.quality_cache[(lon, lat)][target_date] = value
 
     @abstractmethod
-    def approximate(self, target_date, coords_to_approximate, known_points):
+    def approximate(self, target_date, coords_to_interpolate, known_points):
         """
-        Основной метод аппроксимации. Возвращает значения для заданных координат и даты.
-
-        :param target_date: объект даты (тип зависит от реализации)
-        :param coords_to_approximate: список координат (lon, lat)
-        :param known_points: формат зависит от типа аппроксиматора
-        :return: dict {(lon, lat): значение}
+        Вычисляет значения аппроксимации для заданных координат и даты.
+        :param target_date: дата аппроксимации
+        :param coords_to_interpolate: список координат (lon, lat)
+        :param known_points: известные данные (обычно список dict с ключами: longitude, latitude, density)
+        :return: словарь {(lon, lat): значение}
         """
         pass
 
     @abstractmethod
-    def quality_metric(self, target_date, coord, known_points=None) -> float:
+    def quality_metric(self, target_date, coord, known_points=None):
         """
-        Оценка качества аппроксимации в заданной точке.
+        Возвращает оценку разброса аппроксимации (ожидаемое стандартное отклонение).
+        Чем меньше — тем лучше.
 
-        :param target_date: дата
+        :param target_date: дата аппроксимации
         :param coord: координаты (lon, lat)
-        :param known_points: (опционально) набор известных точек
-        :return: числовая метрика (меньше — лучше)
+        :param known_points: список известных точек
+        :return: разброс (stddev), float
         """
         pass
 
     @property
     @abstractmethod
-    def kind(self) -> str:
+    def kind(self):
         """
-        Класс метода: 'temporal' или 'spatial'.
+        Тип метода: 'temporal', 'spatial' или 'combined'
         """
         pass
-
-    @property
-    def name(self) -> str:
-        """
-        Название метода (может переопределяться для фронтенда).
-        """
-        return self.__class__.__name__
