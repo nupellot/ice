@@ -25,10 +25,11 @@ UNIQUE_COORDS = set(zip(UNIQUE_COORDS_DF.longitude, UNIQUE_COORDS_DF.latitude))
 # --- Базовые аппроксиматоры (одиночные и для комбинирования) ---
 SHARED_APPROXIMATORS = {
     'temporal': create_approximator('temporal', df=DF, unique_coords=UNIQUE_COORDS),
-    'kriging': create_approximator('kriging', max_neighbors=15, max_radius_km=30),
+    'kriging': create_approximator('kriging', max_neighbors=150, max_radius_km=300),
     'delaunay': create_approximator('delaunay'),
     # Исправлено название параметра harmonics
-    'fourier': create_approximator('fourier', df=DF, unique_coords=UNIQUE_COORDS, harmonics=10)
+    'fourier': create_approximator('fourier', df=DF, unique_coords=UNIQUE_COORDS, harmonics=10),
+    'spline': create_approximator('spline', df=DF, unique_coords=UNIQUE_COORDS, smoothing_factor=1.0)
 }
 
 # --- Главная страница ---

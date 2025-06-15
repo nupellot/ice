@@ -3,14 +3,20 @@ from .temporal import TemporalInterpolator
 from .spatial import KrigingInterpolator, DelaunayInterpolator
 from .combined import WeightedCombinedInterpolator
 from .fourier import FourierTemporalApproximator
+from .spline import SplineTemporalApproximator
 
 # Список всех базовых (не комбинированных) методов
+
+
 AVAILABLE_APPROXIMATORS = {
     'temporal': TemporalInterpolator,
     'kriging': KrigingInterpolator,
     'delaunay': DelaunayInterpolator,
-    'fourier': FourierTemporalApproximator
+    'fourier': FourierTemporalApproximator,
+    'spline': SplineTemporalApproximator,
+    'combined': WeightedCombinedInterpolator,
 }
+
 
 # Добавим комбинированный метод как отдельную опцию
 COMBINED_NAME = 'combined'
