@@ -18,6 +18,15 @@ MAPBOX_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN', '')
 # --- Загрузка данных ---
 DF = pd.read_csv('density_below_85_latitude.csv', parse_dates=['date'])
 DF['date_only'] = DF['date'].dt.date
+# lon_min, lon_max = 50, 65
+# lat_min, lat_max = 76, 80
+# DF = DF[
+#     (DF['date'] != '2019-06-25') |
+#     (DF['longitude'] < lon_min) |
+#     (DF['longitude'] > lon_max) |
+#     (DF['latitude'] < lat_min) |
+#     (DF['latitude'] > lat_max)
+# ]
 
 UNIQUE_COORDS_DF = pd.read_csv('unique_cords_below_85_latitude.csv')
 UNIQUE_COORDS = set(zip(UNIQUE_COORDS_DF.longitude, UNIQUE_COORDS_DF.latitude))

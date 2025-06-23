@@ -289,10 +289,10 @@
 </div>
 
 <div id="control-panel">
-  <div class="control-panel-header">Интерполяция</div>
+  <div class="control-panel-header">Аппроксимация</div>
 
   <div class="control-panel-row">
-    <span>Включить интерполяцию</span>
+    <span>Включить аппроксимацию</span>
     <label class="switch">
       <input type="checkbox" id="interp-enable-switch" checked />
       <span class="slider"></span>
@@ -382,6 +382,7 @@ const autoWeightsSwitch = document.getElementById('auto-weights-switch');
 const highlightModeRadios = document.querySelectorAll('input[name="highlight"]');
 const highlightModeRow = document.getElementById('highlight-mode-row');
 const highlightModeIndicator = document.querySelector('.triple-toggle__indicator');
+const defaultSize = 9;
 
 mapboxgl.accessToken = '{{ mapbox_token }}';
 const map = new mapboxgl.Map({
@@ -594,7 +595,7 @@ function styleInterpPointsLayerByMode(mode) {
     case 'none':
       map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'transparent');
       map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 1);
-      map.setPaintProperty('interp-points-layer', 'circle-radius', 5);
+      map.setPaintProperty('interp-points-layer', 'circle-radius', defaultSize);
       map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.9);
       map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
       break;
@@ -608,7 +609,7 @@ function styleInterpPointsLayerByMode(mode) {
     case 'color':
       map.setPaintProperty('interp-points-layer', 'circle-stroke-color', 'red');
       map.setPaintProperty('interp-points-layer', 'circle-stroke-width', 2);
-      map.setPaintProperty('interp-points-layer', 'circle-radius', 6);
+      map.setPaintProperty('interp-points-layer', 'circle-radius', 7);
       map.setPaintProperty('interp-points-layer', 'circle-opacity', 0.9);
       map.setPaintProperty('interp-points-layer', 'circle-blur', 0);
       break;
@@ -721,7 +722,7 @@ function loadDataForDate(dateStr, method, interpolationEnabled) {
     .then(({real_points, interp_points}) => {
       const realData = createGeoJSON(real_points);
       addOrUpdateLayer('real-points-layer', realData, {
-        'circle-radius': 5,
+        'circle-radius': defaultSize,
         'circle-color': ['get', 'color'],
         'circle-opacity': 0.9,
         'circle-stroke-color': 'transparent',
@@ -732,7 +733,7 @@ function loadDataForDate(dateStr, method, interpolationEnabled) {
       if (interpolationEnabled && method !== 'none') {
         const interpData = createGeoJSON(interp_points);
         addOrUpdateLayer('interp-points-layer', interpData, {
-          'circle-radius': 5,
+          'circle-radius': defaultSize,
           'circle-color': ['get', 'color'],
           'circle-opacity': 0.9,
           'circle-stroke-color': 'transparent',
